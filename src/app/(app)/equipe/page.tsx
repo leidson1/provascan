@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
-import { UserPlus, Trash2, Users, Eye, EyeOff, Copy, Loader2 } from 'lucide-react'
+import { UserPlus, Trash2, Users, Copy, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -39,10 +39,16 @@ export default function EquipePage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [formNome, setFormNome] = useState('')
   const [formEmail, setFormEmail] = useState('')
-  const [formSenha, setFormSenha] = useState('')
-  const [showSenha, setShowSenha] = useState(false)
+  const [formToken, setFormToken] = useState('')
   const [creating, setCreating] = useState(false)
-  const [createdUser, setCreatedUser] = useState<{ nome: string; email: string; senha: string } | null>(null)
+  const [createdUser, setCreatedUser] = useState<{ nome: string; email: string; token: string } | null>(null)
+
+  function gerarToken() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+    let token = ''
+    for (let i = 0; i < 8; i++) token += chars[Math.floor(Math.random() * chars.length)]
+    return token
+  }
 
   // Remove dialog
   const [removeOpen, setRemoveOpen] = useState(false)
@@ -71,19 +77,14 @@ export default function EquipePage() {
   function openCreateDialog() {
     setFormNome('')
     setFormEmail('')
-    setFormSenha('')
-    setShowSenha(false)
+    setFormToken(gerarToken())
     setCreatedUser(null)
     setCreateOpen(true)
   }
 
   async function handleCreate() {
-    if (!formNome.trim() || !formEmail.trim() || !formSenha.trim()) {
-      toast.error('Preencha todos os campos')
-      return
-    }
-    if (formSenha.length < 6) {
-      toast.error('A senha deve ter pelo menos 6 caracteres')
+    if (!formNome.trim() || !formEmail.trim()) {
+      toast.error('Preencha nome e email')
       return
     }
 
@@ -95,7 +96,7 @@ export default function EquipePage() {
         body: JSON.stringify({
           nome: formNome.trim(),
           email: formEmail.trim().toLowerCase(),
-          senha: formSenha,
+          senha: formToken,
           workspaceId,
         }),
       })
@@ -111,7 +112,7 @@ export default function EquipePage() {
       setCreatedUser({
         nome: formNome.trim(),
         email: formEmail.trim().toLowerCase(),
-        senha: formSenha,
+        token: formToken,
       })
       toast.success('Corretor criado com sucesso!')
       fetchMembers()
@@ -124,7 +125,7 @@ export default function EquipePage() {
 
   function copyCredentials() {
     if (!createdUser) return
-    const text = `ProvaScan - Dados de Acesso\nNome: ${createdUser.nome}\nEmail: ${createdUser.email}\nSenha: ${createdUser.senha}\nAcesse: ${window.location.origin}/login`
+    const text = `ProvaScan - Dados de Acesso\nNome: ${createdUser.nome}\nEmail: ${createdUser.email}\nSenha: ${createdUser.token}\nAcesse: ${window.location.origin}/login`
     navigator.clipboard.writeText(text)
     toast.success('Dados copiados! Cole no WhatsApp ou onde preferir.')
   }
@@ -252,8 +253,8 @@ export default function EquipePage() {
                   <p className="text-sm font-semibold text-gray-900">{createdUser.email}</p>
                 </div>
                 <div>
-                  <span className="text-xs font-medium text-emerald-600">Senha</span>
-                  <p className="text-sm font-semibold text-gray-900 font-mono">{createdUser.senha}</p>
+                  <span className="text-xs font-medium text-emerald-600">Senha (token)</span>
+                  <p className="text-sm font-semibold text-gray-900 font-mono">{createdUser.token}</p>
                 </div>
                 <div>
                   <span className="text-xs font-medium text-emerald-600">Link de acesso</span>
@@ -280,15 +281,15 @@ export default function EquipePage() {
                 <Input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="maria@email.com" />
               </div>
               <div className="space-y-1.5">
-                <Label>Senha</Label>
-                <div className="relative">
-                  <Input type={showSenha ? 'text' : 'password'} value={formSenha}
-                    onChange={e => setFormSenha(e.target.value)} placeholder="Mínimo 6 caracteres" />
-                  <button type="button" onClick={() => setShowSenha(!showSenha)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    {showSenha ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+                <Label>Senha (token gerado)</Label>
+                <div className="flex gap-2">
+                  <Input value={formToken} readOnly className="font-mono bg-gray-50" />
+                  <Button type="button" variant="outline" size="sm" onClick={() => setFormToken(gerarToken())}
+                    className="shrink-0 gap-1.5 h-9 px-3" title="Gerar novo token">
+                    <RefreshCw className="h-3.5 w-3.5" /> Novo
+                  </Button>
                 </div>
+                <p className="text-[10px] text-gray-400">Token gerado automaticamente. Clique em &quot;Novo&quot; para gerar outro.</p>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
