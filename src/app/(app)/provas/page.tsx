@@ -3,7 +3,6 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense, useEffect, useState, useMemo } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, FileText, MoreVertical, ClipboardCheck, BookOpen,
@@ -16,8 +15,6 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table'
@@ -27,10 +24,8 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import { AnswerKeyEditor } from '@/components/answer-key-editor'
+import { ProvaModal, type ProvaFormData } from '@/components/prova-modal'
 import type { Disciplina, Turma } from '@/types/database'
 
 interface ProvaRow {
@@ -126,23 +121,8 @@ function ProvasPage() {
   const [gabaritoProva, setGabaritoProva] = useState<ProvaRow | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Form fields
-  const [formData, setFormData] = useState('')
-  const [formDisciplinaId, setFormDisciplinaId] = useState('')
-  const [formTurmaId, setFormTurmaId] = useState('')
-  const [formNumQuestoes, setFormNumQuestoes] = useState(10)
-  const [formNumAlternativas, setFormNumAlternativas] = useState(5)
-  const [formBloco, setFormBloco] = useState('B1')
-  const [formModoAvaliacao, setFormModoAvaliacao] = useState<'acertos' | 'nota'>('acertos')
-  const [formNotaTotal, setFormNotaTotal] = useState(10)
-  const [formTipoProva, setFormTipoProva] = useState<'objetiva' | 'mista' | 'discursiva'>('objetiva')
-  const [formCriterioDiscursiva, setFormCriterioDiscursiva] = useState(3)
-  const [formTiposQuestoes, setFormTiposQuestoes] = useState<string[]>([])
-  const [formModoAnulacao, setFormModoAnulacao] = useState<'contar_certa' | 'redistribuir'>('contar_certa')
-
-  // Gabarito form
+  // Gabarito modal form
   const [formGabarito, setFormGabarito] = useState('')
-  const [formPesosQuestoes, setFormPesosQuestoes] = useState<number[]>([])
 
   useEffect(() => {
     fetchAll()
@@ -151,24 +131,12 @@ function ProvasPage() {
   // Auto-open create modal if ?nova=1
   useEffect(() => {
     if (searchParams.get('nova') === '1' && !isCorretor && !loading) {
-      openCreateModal()
+      setEditingProva(null)
+      setProvaDialogOpen(true)
       // Clean the URL param
       router.replace('/provas', { scroll: false })
     }
   }, [loading, searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Keep formTiposQuestoes in sync with formNumQuestoes
-  useEffect(() => {
-    setFormTiposQuestoes((prev) => {
-      if (prev.length < formNumQuestoes) {
-        return [...prev, ...Array(formNumQuestoes - prev.length).fill('O')]
-      }
-      if (prev.length > formNumQuestoes) {
-        return prev.slice(0, formNumQuestoes)
-      }
-      return prev
-    })
-  }, [formNumQuestoes])
 
   async function fetchAll() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -202,50 +170,6 @@ function ProvasPage() {
     setLoading(false)
   }
 
-  // ── Open create modal ──
-  function openCreateModal() {
-    setEditingProva(null)
-    setFormData(new Date().toISOString().split('T')[0])
-    setFormDisciplinaId('')
-    setFormTurmaId('')
-    setFormNumQuestoes(10)
-    setFormNumAlternativas(5)
-    setFormBloco('B1')
-    setFormModoAvaliacao('acertos')
-    setFormNotaTotal(10)
-    setFormTipoProva('objetiva')
-    setFormCriterioDiscursiva(3)
-    setFormTiposQuestoes([])
-    setFormModoAnulacao('contar_certa')
-    setFormGabarito('')
-    setFormPesosQuestoes([])
-    setProvaDialogOpen(true)
-  }
-
-  // ── Open edit modal ──
-  function openEditModal(prova: ProvaRow) {
-    setEditingProva(prova)
-    setFormData(prova.data || '')
-    setFormDisciplinaId(prova.disciplina_id ? String(prova.disciplina_id) : '')
-    setFormTurmaId(prova.turma_id ? String(prova.turma_id) : '')
-    setFormNumQuestoes(prova.num_questoes)
-    setFormNumAlternativas(prova.num_alternativas)
-    setFormBloco(prova.bloco)
-    setFormModoAvaliacao(prova.modo_avaliacao)
-    setFormNotaTotal(prova.nota_total || 10)
-    setFormTipoProva(prova.tipo_prova || 'objetiva')
-    setFormCriterioDiscursiva(prova.criterio_discursiva || 3)
-    setFormTiposQuestoes(prova.tipos_questoes ? prova.tipos_questoes.split(',') : [])
-    setFormModoAnulacao(prova.modo_anulacao || 'contar_certa')
-    setFormGabarito(prova.gabarito || '')
-    setFormPesosQuestoes(
-      prova.pesos_questoes
-        ? prova.pesos_questoes.split(',').map(Number)
-        : []
-    )
-    setProvaDialogOpen(true)
-  }
-
   // ── Open gabarito modal ──
   function openGabaritoModal(prova: ProvaRow) {
     setGabaritoProva(prova)
@@ -254,77 +178,47 @@ function ProvasPage() {
   }
 
   // ── Save create/edit ──
-  async function handleSaveProva() {
+  async function handleSaveProva(formData: ProvaFormData) {
     if (!userId) return
     setSaving(true)
 
-    const tiposQuestoes = formTipoProva === 'objetiva'
-      ? Array(formNumQuestoes).fill('O').join(',')
-      : formTipoProva === 'discursiva'
-        ? Array(formNumQuestoes).fill('D').join(',')
-        : formTiposQuestoes.join(',')
-
-    // Build gabarito string from inline editor
-    const gabaritoArr = formGabarito ? formGabarito.split(',') : []
-    while (gabaritoArr.length < formNumQuestoes) gabaritoArr.push('')
-    if (gabaritoArr.length > formNumQuestoes) gabaritoArr.length = formNumQuestoes
-    // Force discursive questions to 'D'
-    const tiposArr = tiposQuestoes.split(',')
-    for (let i = 0; i < formNumQuestoes; i++) {
-      if (tiposArr[i] === 'D') gabaritoArr[i] = 'D'
+    // Compute nota_total for discursiva
+    let computedNotaTotal = formData.notaTotal
+    if (formData.tipoProva === 'discursiva') {
+      computedNotaTotal = formData.pesosQuestoes.reduce((s, v) => s + (v || 0), 0)
     }
-    const finalGabarito = gabaritoArr.join(',')
-
-    // Build pesos_questoes for discursive questions
-    const pesosArr = [...formPesosQuestoes]
-    while (pesosArr.length < formNumQuestoes) pesosArr.push(0)
-    if (pesosArr.length > formNumQuestoes) pesosArr.length = formNumQuestoes
-    const hasDiscursive = tiposArr.some((t) => t === 'D')
-
-    // For discursiva tipo, nota_total = sum of pesos
-    const computedNotaTotal = formTipoProva === 'discursiva'
-      ? pesosArr.reduce((s, v) => s + v, 0)
-      : formModoAvaliacao === 'nota'
-        ? formNotaTotal
-        : null
 
     const payload = {
       user_id: userId,
       workspace_id: workspaceId,
-      data: formData || null,
-      disciplina_id: formDisciplinaId ? Number(formDisciplinaId) : null,
-      turma_id: formTurmaId ? Number(formTurmaId) : null,
-      num_questoes: formNumQuestoes,
-      num_alternativas: formNumAlternativas,
-      bloco: formBloco,
-      modo_avaliacao: formModoAvaliacao,
-      nota_total: computedNotaTotal,
-      tipo_prova: formTipoProva,
-      tipos_questoes: tiposQuestoes,
-      criterio_discursiva: formTipoProva !== 'objetiva' ? formCriterioDiscursiva : 3,
-      modo_anulacao: formModoAnulacao,
-      gabarito: finalGabarito || null,
-      pesos_questoes: hasDiscursive ? pesosArr.join(',') : null,
+      data: formData.data || null,
+      disciplina_id: formData.disciplinaId ? Number(formData.disciplinaId) : null,
+      turma_id: formData.turmaId ? Number(formData.turmaId) : null,
+      num_questoes: formData.numQuestoes,
+      num_alternativas: formData.numAlternativas,
+      bloco: formData.bloco,
+      modo_avaliacao: formData.modoAvaliacao,
+      nota_total: formData.modoAvaliacao === 'nota' ? computedNotaTotal : null,
       status: 'aberta' as const,
+      tipo_prova: formData.tipoProva,
+      tipos_questoes: formData.tiposQuestoes.join(','),
+      criterio_discursiva: formData.criterioDiscursiva,
+      modo_anulacao: formData.modoAnulacao,
+      gabarito: formData.gabarito,
+      pesos_questoes: formData.pesosQuestoes.join(','),
     }
 
     let error
     if (editingProva) {
-      const res = await supabase
-        .from('provas')
-        .update(payload)
-        .eq('id', editingProva.id)
+      const res = await supabase.from('provas').update(payload).eq('id', editingProva.id)
       error = res.error
     } else {
-      const res = await supabase
-        .from('provas')
-        .insert(payload)
+      const res = await supabase.from('provas').insert(payload)
       error = res.error
     }
 
     if (error) {
       toast.error(editingProva ? 'Erro ao atualizar prova' : 'Erro ao criar prova')
-      console.error(error)
     } else {
       toast.success(editingProva ? 'Prova atualizada!' : 'Prova criada com sucesso!')
       setProvaDialogOpen(false)
@@ -396,7 +290,7 @@ function ProvasPage() {
           <p className="text-sm text-gray-500">Gerencie suas provas e gabaritos</p>
         </div>
         {!isCorretor && (
-          <Button onClick={openCreateModal} className="gap-2">
+          <Button onClick={() => { setEditingProva(null); setProvaDialogOpen(true) }} className="gap-2">
             <Plus className="h-4 w-4" />
             Nova Prova
           </Button>
@@ -412,7 +306,7 @@ function ProvasPage() {
               <p className="text-sm font-medium text-gray-900">Nenhuma prova encontrada</p>
               <p className="mt-1 text-sm text-gray-500">Crie sua primeira prova para começar!</p>
               {!isCorretor && (
-                <Button onClick={openCreateModal} size="sm" className="mt-4 gap-2">
+                <Button onClick={() => { setEditingProva(null); setProvaDialogOpen(true) }} size="sm" className="mt-4 gap-2">
                   <Plus className="h-4 w-4" /> Nova Prova
                 </Button>
               )}
@@ -464,7 +358,7 @@ function ProvasPage() {
                         <DropdownMenuContent align="end">
                           {!isCorretor && (
                             <>
-                              <DropdownMenuItem onClick={() => openEditModal(prova)}>
+                              <DropdownMenuItem onClick={() => { setEditingProva(prova); setProvaDialogOpen(true) }}>
                                 <Pencil className="mr-2 h-4 w-4" /> Editar
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openGabaritoModal(prova)}>
@@ -506,254 +400,31 @@ function ProvasPage() {
       {/* ════════════════════════════════════════════════ */}
       {/*  MODAL: Criar / Editar Prova                    */}
       {/* ════════════════════════════════════════════════ */}
-      <Dialog open={provaDialogOpen} onOpenChange={setProvaDialogOpen}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingProva ? 'Editar Prova' : 'Nova Prova'}</DialogTitle>
-            <DialogDescription>
-              {editingProva ? 'Altere os dados da prova.' : 'Preencha os dados e defina o gabarito.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 py-1">
-            {/* Disciplina + Turma */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Disciplina</Label>
-                <Select value={formDisciplinaId} onValueChange={(v) => v && setFormDisciplinaId(v)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    {disciplinas.map((d) => (
-                      <SelectItem key={d.id} value={String(d.id)}>{d.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Turma</Label>
-                <Select value={formTurmaId} onValueChange={(v) => v && setFormTurmaId(v)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    {turmas.map((t) => (
-                      <SelectItem key={t.id} value={String(t.id)}>{t.serie} - {t.turma}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Data + Bloco + Tipo */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Data</Label>
-                <Input className="h-8 text-xs" type="date" value={formData} onChange={(e) => setFormData(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Bloco</Label>
-                <Input className="h-8 text-xs" value={formBloco} onChange={(e) => setFormBloco(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Tipo</Label>
-                <Select value={formTipoProva} onValueChange={(v) => {
-                  const tipo = v as 'objetiva' | 'mista' | 'discursiva'
-                  setFormTipoProva(tipo)
-                  if (tipo === 'discursiva') {
-                    setFormModoAvaliacao('nota')
-                    setFormTiposQuestoes(Array(formNumQuestoes).fill('D'))
-                  } else if (tipo === 'objetiva') {
-                    setFormTiposQuestoes(Array(formNumQuestoes).fill('O'))
-                  }
-                }}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="objetiva">Objetiva</SelectItem>
-                    <SelectItem value="mista">Mista</SelectItem>
-                    <SelectItem value="discursiva">Discursiva</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Questões + Alternativas/Critério */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Questões</Label>
-                <Input className="h-8 text-xs" type="number" min={1} max={50} value={formNumQuestoes}
-                  onChange={(e) => {
-                    const n = Number(e.target.value)
-                    setFormNumQuestoes(n)
-                    if (formTipoProva === 'discursiva') setFormTiposQuestoes(Array(n).fill('D'))
-                  }} />
-              </div>
-              {formTipoProva !== 'discursiva' && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Alternativas</Label>
-                  <Select value={String(formNumAlternativas)} onValueChange={(v) => v && setFormNumAlternativas(Number(v))}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="4">4 (A–D)</SelectItem>
-                      <SelectItem value="5">5 (A–E)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {formTipoProva !== 'objetiva' && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Critério</Label>
-                  <Select value={String(formCriterioDiscursiva)} onValueChange={(v) => v && setFormCriterioDiscursiva(Number(v))}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2">2 (C/E)</SelectItem>
-                      <SelectItem value="3">3 (C/P/E)</SelectItem>
-                      <SelectItem value="4">4 (E/B/P/I)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="space-y-1">
-                <Label className="text-xs">Avaliação</Label>
-                <Select value={formModoAvaliacao} onValueChange={(v) => v && setFormModoAvaliacao(v as 'acertos' | 'nota')} disabled={formTipoProva === 'discursiva'}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="acertos">Acertos</SelectItem>
-                    <SelectItem value="nota">Nota</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Nota Total (se nota e não discursiva) + Anulação */}
-            <div className="grid grid-cols-2 gap-2">
-              {formModoAvaliacao === 'nota' && formTipoProva !== 'discursiva' && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Nota Total</Label>
-                  <Input className="h-8 text-xs" type="number" min={1} step="0.1" value={formNotaTotal}
-                    onChange={(e) => setFormNotaTotal(Number(e.target.value))} />
-                </div>
-              )}
-              <div className="space-y-1">
-                <Label className="text-xs">Se anular questão</Label>
-                <Select value={formModoAnulacao} onValueChange={(v) => v && setFormModoAnulacao(v as 'contar_certa' | 'redistribuir')}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="contar_certa">Contar certa</SelectItem>
-                    <SelectItem value="redistribuir">Redistribuir</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Toggle O/D por questão (mista) */}
-            {formTipoProva === 'mista' && formNumQuestoes > 0 && (
-              <div className="space-y-1">
-                <Label className="text-xs">Tipo por questão <span className="font-normal text-muted-foreground">(clique para alternar)</span></Label>
-                <div className="flex flex-wrap gap-1">
-                  {Array.from({ length: formNumQuestoes }).map((_, i) => {
-                    const tipo = formTiposQuestoes[i] || 'O'
-                    return (
-                      <button key={i} type="button"
-                        onClick={() => {
-                          const nt = [...formTiposQuestoes]
-                          while (nt.length <= i) nt.push('O')
-                          nt[i] = nt[i] === 'D' ? 'O' : 'D'
-                          setFormTiposQuestoes(nt)
-                        }}
-                        className={`w-8 h-7 rounded text-[10px] font-bold border transition-colors ${
-                          tipo === 'D' ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                        }`}>
-                        <div className="leading-none opacity-70" style={{fontSize:'8px'}}>{i+1}</div>
-                        <div className="leading-none">{tipo}</div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ─── GABARITO ─── */}
-            <div className="border-t pt-2">
-              <Label className="text-xs font-semibold mb-2 block">Gabarito</Label>
-              {(() => {
-                const ALTS = ['A','B','C','D','E'].slice(0, formNumAlternativas)
-                const DL: Record<number,string[]> = { 2:['C','E'], 3:['C','P','E'], 4:['E','B','P','I'] }
-                const discL = DL[formCriterioDiscursiva] || DL[3]
-                const gabArr = formGabarito ? formGabarito.split(',') : []
-                while (gabArr.length < formNumQuestoes) gabArr.push('')
-                if (gabArr.length > formNumQuestoes) gabArr.length = formNumQuestoes
-                const pesosArr = [...formPesosQuestoes]
-                while (pesosArr.length < formNumQuestoes) pesosArr.push(1)
-                const tiposArr = formTipoProva === 'objetiva' ? Array(formNumQuestoes).fill('O')
-                  : formTipoProva === 'discursiva' ? Array(formNumQuestoes).fill('D')
-                  : formTiposQuestoes.length >= formNumQuestoes ? formTiposQuestoes
-                  : [...formTiposQuestoes, ...Array(formNumQuestoes - formTiposQuestoes.length).fill('O')]
-                const filled = gabArr.filter(a => a !== '').length
-
-                function gSel(i: number, l: string) { const u=[...gabArr]; u[i]=u[i]===l?'':l; setFormGabarito(u.join(',')) }
-                function gAnul(i: number) { const u=[...gabArr]; u[i]=u[i]==='X'?'':'X'; setFormGabarito(u.join(',')) }
-                function pChg(i: number, v: number) { const u=[...pesosArr]; u[i]=v; setFormPesosQuestoes(u) }
-
-                return (
-                  <div className="space-y-2">
-                    <div className="max-h-[240px] overflow-y-auto rounded border border-gray-200">
-                      {Array.from({ length: formNumQuestoes }).map((_, idx) => {
-                        const isD = tiposArr[idx] === 'D'
-                        const ans = gabArr[idx] || ''
-                        return (
-                          <div key={idx} className={`flex items-center gap-1 px-2 py-0.5 border-b border-gray-50 ${isD ? 'bg-blue-50/50' : ''}`}>
-                            <span className="w-6 text-[10px] font-bold text-gray-400 text-right shrink-0">{idx+1}</span>
-                            {isD ? (
-                              <>
-                                {discL.map(l => (
-                                  <span key={l} className="inline-flex items-center justify-center w-7 h-6 rounded bg-blue-500 text-white text-[10px] font-bold">{l}</span>
-                                ))}
-                                {(formTipoProva === 'discursiva' || formTipoProva === 'mista') && (
-                                  <input type="number" min={0} step={0.5} value={pesosArr[idx] || ''}
-                                    onChange={(e) => pChg(idx, Number(e.target.value))}
-                                    className="w-12 h-6 text-[10px] text-center border border-gray-300 rounded ml-auto"
-                                    placeholder="pts" />
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                {ALTS.map(l => (
-                                  <button key={l} type="button" onClick={() => gSel(idx, l)}
-                                    className={`w-6 h-6 rounded text-[10px] font-bold transition-colors ${
-                                      ans===l ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                    }`}>{l}</button>
-                                ))}
-                                <button type="button" onClick={() => gAnul(idx)}
-                                  className={`w-6 h-6 rounded text-[10px] font-bold transition-colors ${
-                                    ans==='X' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                  }`}>X</button>
-                              </>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className={`rounded px-2 py-1 text-[11px] font-medium flex justify-between ${
-                      filled >= formNumQuestoes ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
-                    }`}>
-                      <span>{filled}/{formNumQuestoes} preenchidas</span>
-                      {formTipoProva !== 'objetiva' && (
-                        <span>Total: {pesosArr.slice(0,formNumQuestoes).filter((_,i)=>tiposArr[i]==='D').reduce((s,v)=>s+(v||0),0).toFixed(1)} pts</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setProvaDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveProva} disabled={saving} className="gap-2">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {saving ? 'Salvando...' : editingProva ? 'Salvar' : 'Criar Prova'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProvaModal
+        open={provaDialogOpen}
+        onOpenChange={setProvaDialogOpen}
+        disciplinas={disciplinas}
+        turmas={turmas}
+        saving={saving}
+        onSave={handleSaveProva}
+        editMode={!!editingProva}
+        initial={editingProva ? {
+          data: editingProva.data || '',
+          bloco: editingProva.bloco,
+          disciplinaId: editingProva.disciplina_id ? String(editingProva.disciplina_id) : '',
+          turmaId: editingProva.turma_id ? String(editingProva.turma_id) : '',
+          tipoProva: editingProva.tipo_prova || 'objetiva',
+          numQuestoes: editingProva.num_questoes,
+          numAlternativas: editingProva.num_alternativas,
+          criterioDiscursiva: editingProva.criterio_discursiva || 3,
+          modoAvaliacao: editingProva.modo_avaliacao,
+          notaTotal: editingProva.nota_total || 10,
+          modoAnulacao: editingProva.modo_anulacao || 'contar_certa',
+          tiposQuestoes: editingProva.tipos_questoes?.split(',') || [],
+          gabarito: editingProva.gabarito || '',
+          pesosQuestoes: editingProva.pesos_questoes?.split(',').map(Number) || [],
+        } : undefined}
+      />
 
       {/* ════════════════════════════════════════════════ */}
       {/*  MODAL: Gabarito                                */}
