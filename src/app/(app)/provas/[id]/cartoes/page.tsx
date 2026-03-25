@@ -149,29 +149,7 @@ export default function CartoesPage() {
     )
   }
 
-  // Bloquear geração para provas puramente discursivas
-  if (prova.tipo_prova === 'discursiva') {
-    return (
-      <div className="space-y-4">
-        <Link href="/provas" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-2")}>
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </Link>
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FileText className="mx-auto mb-3 h-10 w-10 text-blue-400" />
-            <h2 className="text-lg font-semibold text-gray-900">Prova Discursiva</h2>
-            <p className="mt-2 text-sm text-gray-500 max-w-md mx-auto">
-              Provas puramente discursivas não utilizam cartão-resposta.
-              A correção é feita diretamente no sistema.
-            </p>
-            <Link href={`/provas/${prova.id}/correcao`} className={cn(buttonVariants(), "mt-4 gap-2")}>
-              <ClipboardCheck className="h-4 w-4" /> Ir para Correção
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  // Discursiva pura agora gera cartão com bolhas de critério (não bloqueia mais)
 
   const disciplinaNome = prova.disciplina?.nome || 'Prova'
   const turmaNome = prova.turma ? `${prova.turma.serie} ${prova.turma.turma}` : '\u2014'

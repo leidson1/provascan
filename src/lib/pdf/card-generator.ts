@@ -453,10 +453,14 @@ function desenharLinhaCorte(doc: jsPDF): void {
  * Retorna o documento jsPDF (caller pode .save() ou .output()).
  */
 export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
-  const { prova, alunos, baseUrl, tipoProva, tiposQuestoes, criterioDiscursiva } = params
+  const { prova, alunos, baseUrl, tipoProva, criterioDiscursiva } = params
+  let tiposQuestoes = params.tiposQuestoes
 
-  // Provas puramente discursivas não geram cartão-resposta
-  if (tipoProva === 'discursiva') return null
+  // Discursiva pura agora gera cartão com bolhas de critério
+  // Se discursiva, tratar todas questões como D
+  if (tipoProva === 'discursiva' && !tiposQuestoes) {
+    tiposQuestoes = Array(params.prova.numQuestoes).fill('D').join(',')
+  }
 
   const C = CARTAO
   const isMista = tipoProva === 'mista'
