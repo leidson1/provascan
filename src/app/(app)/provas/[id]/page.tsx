@@ -72,7 +72,7 @@ export default function ProvaDetailPage() {
         .single()
 
       if (error || !data) {
-        toast.error('Prova nao encontrada')
+        toast.error('Prova não encontrada')
         setLoading(false)
         return
       }
@@ -122,7 +122,7 @@ export default function ProvaDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Link>
-        <p className="text-gray-500">Prova nao encontrada.</p>
+        <p className="text-gray-500">Prova não encontrada.</p>
       </div>
     )
   }
@@ -149,7 +149,7 @@ export default function ProvaDetailPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Informacoes da Prova</CardTitle>
+            <CardTitle>Informações da Prova</CardTitle>
             {statusBadge(prova.status)}
           </div>
         </CardHeader>
@@ -185,7 +185,7 @@ export default function ProvaDetailPage() {
             <div className="flex items-center gap-2">
               <Hash className="h-4 w-4 text-gray-400" />
               <div>
-                <p className="text-xs text-gray-500">Questoes</p>
+                <p className="text-xs text-gray-500">Questões</p>
                 <p className="text-sm font-medium">{prova.num_questoes}</p>
               </div>
             </div>
@@ -231,11 +231,11 @@ export default function ProvaDetailPage() {
             </Link>
             <Link href={`/provas/${prova.id}/cartoes`} className={cn(buttonVariants({ variant: "outline" }), "gap-2")}>
               <CreditCard className="h-4 w-4" />
-              Gerar Cartoes
+              Gerar Cartões
             </Link>
             <Link href={`/provas/${prova.id}/estatisticas`} className={cn(buttonVariants({ variant: "outline" }), "gap-2")}>
               <BarChart3 className="h-4 w-4" />
-              Estatisticas
+              Estatísticas
             </Link>
           </div>
         </CardContent>

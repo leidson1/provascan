@@ -35,6 +35,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface ProvaRow {
   id: number
@@ -63,7 +71,7 @@ function statusBadge(status: string) {
     case 'excluida':
       return (
         <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
-          Excluida
+          Excluída
         </Badge>
       )
     default:
@@ -76,11 +84,40 @@ function formatDate(dateStr: string | null) {
   return new Date(dateStr).toLocaleDateString('pt-BR')
 }
 
+function TableSkeleton() {
+  return (
+    <div className="p-4 space-y-4">
+      {/* Header skeleton */}
+      <div className="flex gap-4">
+        {[80, 120, 80, 60, 80, 40].map((w, i) => (
+          <div
+            key={i}
+            className="h-4 rounded bg-gray-200 animate-pulse"
+            style={{ width: w }}
+          />
+        ))}
+      </div>
+      {/* Row skeletons */}
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="flex gap-4 items-center">
+          <div className="h-4 w-20 rounded bg-gray-100 animate-pulse" />
+          <div className="h-4 w-28 rounded bg-gray-100 animate-pulse" />
+          <div className="h-4 w-20 rounded bg-gray-100 animate-pulse" />
+          <div className="h-4 w-12 rounded bg-gray-100 animate-pulse" />
+          <div className="h-5 w-16 rounded-full bg-gray-100 animate-pulse" />
+          <div className="h-6 w-6 rounded bg-gray-100 animate-pulse" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ProvasPage() {
   const supabase = createClient()
   const router = useRouter()
   const [provas, setProvas] = useState<ProvaRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchProvas()
@@ -124,14 +161,26 @@ export default function ProvasPage() {
       return
     }
 
-    toast.success('Prova excluida com sucesso')
+    toast.success('Prova excluída com sucesso')
     setProvas((prev) => prev.filter((p) => p.id !== provaId))
+    setDeleteId(null)
   }
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="h-7 w-32 rounded bg-gray-200 animate-pulse" />
+            <div className="mt-2 h-4 w-48 rounded bg-gray-100 animate-pulse" />
+          </div>
+          <div className="h-9 w-28 rounded bg-gray-200 animate-pulse" />
+        </div>
+        <Card>
+          <CardContent className="p-0">
+            <TableSkeleton />
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -167,7 +216,7 @@ export default function ProvasPage() {
                 Nenhuma prova encontrada
               </p>
               <p className="mt-1 text-sm text-gray-500">
-                Crie sua primeira prova para comecar!
+                Crie sua primeira prova para começar!
               </p>
               <Link href="/provas/nova" className={cn(buttonVariants({ size: "sm" }), "mt-4 gap-2")}>
                 <Plus className="h-4 w-4" />
@@ -181,7 +230,7 @@ export default function ProvasPage() {
                   <TableHead>Data</TableHead>
                   <TableHead>Disciplina</TableHead>
                   <TableHead>Turma</TableHead>
-                  <TableHead className="text-center">Questoes</TableHead>
+                  <TableHead className="text-center">Questões</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
@@ -230,7 +279,7 @@ export default function ProvasPage() {
                             }
                           >
                             <BarChart3 className="mr-2 h-4 w-4" />
-                            Estatisticas
+                            Estatísticas
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
@@ -238,11 +287,11 @@ export default function ProvasPage() {
                             }
                           >
                             <CreditCard className="mr-2 h-4 w-4" />
-                            Gerar Cartoes
+                            Gerar Cartões
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-red-600 focus:text-red-600"
-                            onClick={() => handleDelete(prova.id)}
+                            onClick={() => setDeleteId(prova.id)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Excluir
@@ -257,6 +306,29 @@ export default function ProvasPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir prova</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja excluir esta prova? Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteId && handleDelete(deleteId)}
+            >
+              Excluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

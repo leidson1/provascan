@@ -153,11 +153,16 @@ export default function DisciplinasPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Disciplinas</h1>
-          {!loading && (
-            <Badge variant="secondary">{disciplinas.length}</Badge>
-          )}
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">Disciplinas</h1>
+            {!loading && (
+              <Badge variant="secondary">{disciplinas.length}</Badge>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Gerencie as matérias disponíveis para suas provas
+          </p>
         </div>
         <Button onClick={openAddDialog}>
           <Plus className="size-4" data-icon="inline-start" />
@@ -251,6 +256,9 @@ export default function DisciplinasPage() {
             />
           </div>
           <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancelar
+            </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? 'Salvando...' : 'Salvar'}
             </Button>

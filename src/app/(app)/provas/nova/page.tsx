@@ -79,7 +79,7 @@ export default function NovaProvaPage() {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      toast.error('Usuario nao autenticado')
+      toast.error('Usuário não autenticado')
       setSaving(false)
       return
     }
@@ -182,9 +182,9 @@ export default function NovaProvaPage() {
               </Select>
             </div>
 
-            {/* Numero de Questoes */}
+            {/* Número de Questões */}
             <div className="space-y-2">
-              <Label htmlFor="numQuestoes">Numero de Questoes</Label>
+              <Label htmlFor="numQuestoes">Número de Questões</Label>
               <Input
                 id="numQuestoes"
                 type="number"
@@ -195,9 +195,9 @@ export default function NovaProvaPage() {
               />
             </div>
 
-            {/* Alternativas por Questao */}
+            {/* Alternativas por Questão */}
             <div className="space-y-2">
-              <Label>Alternativas por Questao</Label>
+              <Label>Alternativas por Questão</Label>
               <Select
                 value={String(numAlternativas)}
                 onValueChange={(v) => setNumAlternativas(Number(v))}
@@ -222,9 +222,9 @@ export default function NovaProvaPage() {
               />
             </div>
 
-            {/* Modo de Avaliacao */}
+            {/* Modo de Avaliação */}
             <div className="space-y-2">
-              <Label>Modo de Avaliacao</Label>
+              <Label>Modo de Avaliação</Label>
               <Select
                 value={modoAvaliacao}
                 onValueChange={(v) => setModoAvaliacao(v as 'acertos' | 'nota')}
@@ -237,6 +237,11 @@ export default function NovaProvaPage() {
                   <SelectItem value="nota">Por Nota</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {modoAvaliacao === 'acertos'
+                  ? 'Contagem simples de respostas corretas'
+                  : 'Nota calculada com base em pesos por questão'}
+              </p>
             </div>
 
             {/* Nota Total (conditional) */}

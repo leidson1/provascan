@@ -98,7 +98,7 @@ export default function CorrecaoPage() {
         .single()
 
       if (provaErr || !provaData) {
-        toast.error('Prova nao encontrada')
+        toast.error('Prova não encontrada')
         setLoading(false)
         return
       }
@@ -107,7 +107,7 @@ export default function CorrecaoPage() {
       setProva(p)
 
       if (!p.turma_id) {
-        toast.error('Esta prova nao tem turma associada')
+        toast.error('Esta prova não tem turma associada')
         setLoading(false)
         return
       }
@@ -253,7 +253,7 @@ export default function CorrecaoPage() {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      toast.error('Usuario nao autenticado')
+      toast.error('Usuário não autenticado')
       setSaving(false)
       return
     }
@@ -274,7 +274,7 @@ export default function CorrecaoPage() {
       }))
 
     if (upserts.length === 0) {
-      toast.error('Nenhum aluno marcado com presenca')
+      toast.error('Nenhum aluno marcado com presença')
       setSaving(false)
       return
     }
@@ -284,10 +284,10 @@ export default function CorrecaoPage() {
     })
 
     if (error) {
-      toast.error('Erro ao salvar correcao')
+      toast.error('Erro ao salvar correção')
       console.error(error)
     } else {
-      toast.success(`Correcao salva! ${upserts.length} aluno(s) registrados.`)
+      toast.success(`Correção salva! ${upserts.length} aluno(s) registrados.`)
     }
 
     setSaving(false)
@@ -323,7 +323,7 @@ export default function CorrecaoPage() {
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Link>
-        <p className="text-gray-500">Prova nao encontrada.</p>
+        <p className="text-gray-500">Prova não encontrada.</p>
       </div>
     )
   }
@@ -339,20 +339,20 @@ export default function CorrecaoPage() {
           </Link>
           <div>
             <h1 className="text-xl font-bold text-gray-900">
-              Correcao - Prova #{prova.id}
+              Correção - Prova #{prova.id}
             </h1>
             <p className="text-sm text-gray-500">
               {prova.disciplina?.nome ?? 'Disciplina'} &middot;{' '}
               {prova.turma
                 ? `${prova.turma.serie} ${prova.turma.turma}`
                 : 'Turma'}{' '}
-              &middot; {prova.num_questoes} questoes
+              &middot; {prova.num_questoes} questões
             </p>
           </div>
         </div>
         <Link href={`/provas/${prova.id}/estatisticas`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2")}>
           <BarChart3 className="h-4 w-4" />
-          Estatisticas
+          Estatísticas
         </Link>
       </div>
 
@@ -385,7 +385,7 @@ export default function CorrecaoPage() {
               </Badge>
             </div>
             <span className="font-semibold text-indigo-600">
-              Media: {mediaPercent}%
+              Média: {mediaPercent}%
             </span>
           </div>
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
@@ -429,8 +429,8 @@ export default function CorrecaoPage() {
         <div className="flex items-center justify-between">
           <p className="text-xs text-gray-500">
             {corrigidos > 0
-              ? `${corrigidos} aluno(s) serao salvos`
-              : 'Marque presenca para habilitar'}
+              ? `${corrigidos} aluno(s) serão salvos`
+              : 'Marque presença para habilitar'}
           </p>
           <Button
             onClick={handleSave}
@@ -438,7 +438,7 @@ export default function CorrecaoPage() {
             size="lg"
           >
             <Save className="mr-2 h-4 w-4" />
-            {saving ? 'Salvando...' : 'Salvar Correcao'}
+            {saving ? 'Salvando...' : 'Salvar Correção'}
           </Button>
         </div>
       </div>

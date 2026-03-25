@@ -49,7 +49,7 @@ export default function EstatisticasPage() {
         .single()
 
       if (provaErr || !provaData) {
-        toast.error('Prova nao encontrada')
+        toast.error('Prova não encontrada')
         setLoading(false)
         return
       }
@@ -84,7 +84,7 @@ export default function EstatisticasPage() {
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Link>
-        <p className="text-gray-500">Prova nao encontrada.</p>
+        <p className="text-gray-500">Prova não encontrada.</p>
       </div>
     )
   }
@@ -172,7 +172,7 @@ export default function EstatisticasPage() {
           </Link>
           <div>
             <h1 className="text-xl font-bold text-gray-900">
-              Estatisticas - Prova #{prova.id}
+              Estatísticas - Prova #{prova.id}
             </h1>
             <p className="text-sm text-gray-500">
               {prova.disciplina?.nome ?? 'Disciplina'} &middot;{' '}
@@ -184,7 +184,7 @@ export default function EstatisticasPage() {
         </div>
         <Link href={`/provas/${prova.id}/correcao`} className={cn(buttonVariants(), "gap-2")}>
           <ClipboardCheck className="h-4 w-4" />
-          Abrir Correcao
+          Abrir Correção
         </Link>
       </div>
 
@@ -197,7 +197,7 @@ export default function EstatisticasPage() {
             </p>
             <Link href={`/provas/${prova.id}/correcao`} className={cn(buttonVariants(), "mt-4 gap-2")}>
               <ClipboardCheck className="h-4 w-4" />
-              Iniciar Correcao
+              Iniciar Correção
             </Link>
           </CardContent>
         </Card>
@@ -237,7 +237,7 @@ export default function EstatisticasPage() {
                   <Target className="h-5 w-5 text-indigo-600" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Media Acertos</p>
+                  <p className="text-xs text-gray-500">Média Acertos</p>
                   <p className="text-xl font-bold text-gray-900">
                     {mediaAcertos.toFixed(1)}{' '}
                     <span className="text-sm font-normal text-gray-500">
@@ -253,7 +253,7 @@ export default function EstatisticasPage() {
                   <Percent className="h-5 w-5 text-amber-600" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Media %</p>
+                  <p className="text-xs text-gray-500">Média %</p>
                   <p className="text-xl font-bold text-gray-900">
                     {mediaPercent.toFixed(1)}%
                   </p>
@@ -267,7 +267,7 @@ export default function EstatisticasPage() {
                     <Award className="h-5 w-5 text-purple-600" />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Media Nota</p>
+                    <p className="text-xs text-gray-500">Média Nota</p>
                     <p className="text-xl font-bold text-gray-900">
                       {mediaNota.toFixed(1)}
                     </p>
@@ -277,11 +277,11 @@ export default function EstatisticasPage() {
             )}
           </div>
 
-          {/* Bar chart: Acertos por Questao */}
+          {/* Bar chart: Acertos por Questão */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
-                Acertos por Questao
+                Acertos por Questão
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -321,7 +321,7 @@ export default function EstatisticasPage() {
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-base text-red-600">
                       <AlertTriangle className="h-4 w-4" />
-                      Questoes Dificeis ({'<'} 40%)
+                      Questões Difíceis ({'<'} 40%)
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -343,7 +343,7 @@ export default function EstatisticasPage() {
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-base text-green-600">
                       <CheckCircle2 className="h-4 w-4" />
-                      Questoes Faceis ({'>='} 80%)
+                      Questões Fáceis ({'>='} 80%)
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

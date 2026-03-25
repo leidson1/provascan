@@ -391,6 +391,9 @@ export default function AlunosPage() {
             </div>
           </div>
           <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancelar
+            </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? 'Salvando...' : 'Salvar'}
             </Button>
@@ -409,6 +412,9 @@ export default function AlunosPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
+            <p className="text-xs text-muted-foreground rounded-md bg-muted px-3 py-2">
+              Os números serão atribuídos automaticamente na ordem da lista.
+            </p>
             <Label htmlFor="import-text">Nomes dos alunos</Label>
             <Textarea
               id="import-text"

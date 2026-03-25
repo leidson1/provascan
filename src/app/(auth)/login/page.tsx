@@ -18,7 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ScanLine } from "lucide-react";
+import { Loader2, ScanLine } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,8 +37,12 @@ export default function LoginPage() {
     });
 
     if (error) {
+      const msg =
+        error.message === "Invalid login credentials"
+          ? "Email ou senha incorretos. Verifique e tente novamente."
+          : error.message;
       toast.error("Erro ao entrar", {
-        description: error.message,
+        description: msg,
       });
       setLoading(false);
       return;
@@ -106,6 +110,7 @@ export default function LoginPage() {
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {loading ? "Entrando..." : "Entrar"}
           </Button>
 

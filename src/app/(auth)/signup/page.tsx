@@ -17,7 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ScanLine } from "lucide-react";
+import { Loader2, ScanLine } from "lucide-react";
 
 export default function SignUpPage() {
   const [nome, setNome] = useState("");
@@ -54,15 +54,21 @@ export default function SignUpPage() {
     });
 
     if (error) {
+      let msg = error.message;
+      if (error.message.includes("already registered")) {
+        msg = "Este email já está cadastrado. Tente fazer login.";
+      } else if (error.message.includes("Password should be")) {
+        msg = "A senha deve ter pelo menos 6 caracteres.";
+      }
       toast.error("Erro ao criar conta", {
-        description: error.message,
+        description: msg,
       });
       setLoading(false);
       return;
     }
 
     toast.success("Conta criada com sucesso!", {
-      description: "Verifique seu email para confirmar o cadastro.",
+      description: "Verifique seu e-mail para confirmar o cadastro.",
     });
     setLoading(false);
   }
@@ -157,6 +163,7 @@ export default function SignUpPage() {
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {loading ? "Criando conta..." : "Criar Conta"}
           </Button>
         </CardContent>
