@@ -77,6 +77,7 @@ export interface Prova {
   tipo_prova: 'objetiva' | 'mista' | 'discursiva'
   tipos_questoes: string | null
   criterio_discursiva: number
+  modo_anulacao: 'contar_certa' | 'redistribuir'
   created_at: string
   // Joined fields
   disciplina?: Disciplina

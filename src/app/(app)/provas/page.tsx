@@ -48,6 +48,7 @@ interface ProvaRow {
   tipo_prova: 'objetiva' | 'mista' | 'discursiva'
   tipos_questoes: string | null
   criterio_discursiva: number
+  modo_anulacao: 'contar_certa' | 'redistribuir'
   created_at: string
   disciplina: { nome: string } | null
   turma: { serie: string; turma: string } | null
@@ -127,6 +128,7 @@ export default function ProvasPage() {
   const [formTipoProva, setFormTipoProva] = useState<'objetiva' | 'mista' | 'discursiva'>('objetiva')
   const [formCriterioDiscursiva, setFormCriterioDiscursiva] = useState(3)
   const [formTiposQuestoes, setFormTiposQuestoes] = useState<string[]>([])
+  const [formModoAnulacao, setFormModoAnulacao] = useState<'contar_certa' | 'redistribuir'>('contar_certa')
 
   // Gabarito form
   const [formGabarito, setFormGabarito] = useState('')
@@ -194,6 +196,7 @@ export default function ProvasPage() {
     setFormTipoProva('objetiva')
     setFormCriterioDiscursiva(3)
     setFormTiposQuestoes([])
+    setFormModoAnulacao('contar_certa')
     setProvaDialogOpen(true)
   }
 
@@ -211,6 +214,7 @@ export default function ProvasPage() {
     setFormTipoProva(prova.tipo_prova || 'objetiva')
     setFormCriterioDiscursiva(prova.criterio_discursiva || 3)
     setFormTiposQuestoes(prova.tipos_questoes ? prova.tipos_questoes.split(',') : [])
+    setFormModoAnulacao(prova.modo_anulacao || 'contar_certa')
     setProvaDialogOpen(true)
   }
 
@@ -246,6 +250,7 @@ export default function ProvasPage() {
       tipo_prova: formTipoProva,
       tipos_questoes: tiposQuestoes,
       criterio_discursiva: formTipoProva !== 'objetiva' ? formCriterioDiscursiva : 3,
+      modo_anulacao: formModoAnulacao,
       status: 'aberta' as const,
     }
 
@@ -535,6 +540,23 @@ export default function ProvasPage() {
                 ? 'Contagem simples de respostas corretas'
                 : 'Nota calculada com base em pesos por questão'}
             </p>
+
+            {/* Modo de Anulação */}
+            <div className="space-y-1.5">
+              <Label>Quando anular uma questão</Label>
+              <Select value={formModoAnulacao} onValueChange={(v) => v && setFormModoAnulacao(v as 'contar_certa' | 'redistribuir')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="contar_certa">Contar como certa para todos</SelectItem>
+                  <SelectItem value="redistribuir">Redistribuir peso entre as demais</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {formModoAnulacao === 'contar_certa'
+                  ? 'Todos os alunos recebem o ponto da questão anulada'
+                  : 'O valor da questão anulada é dividido entre as questões válidas'}
+              </p>
+            </div>
 
             {/* Tipo de Prova */}
             <div className="space-y-1.5">

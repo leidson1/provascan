@@ -47,16 +47,34 @@ export default function CorrecaoPage() {
 
   // Calculate acertos for a student
   const calcularAcertos = useCallback(
-    (questoes: Record<string, number>, gabaritoArr: string[]) => {
+    (questoes: Record<string, number>, gabaritoArr: string[], modoAnulacao?: string) => {
       let acertos = 0
-      for (let i = 0; i < gabaritoArr.length; i++) {
-        const key = `q${i + 1}`
-        if (gabaritoArr[i] === 'X') {
-          // Anulled question = automatic correct
-          acertos++
-        } else if (questoes[key] !== undefined) {
-          // Sum the value directly (1 for objective correct, fractional for discursive)
-          acertos += questoes[key]
+      const numAnuladas = gabaritoArr.filter(g => g === 'X').length
+      const numValidas = gabaritoArr.length - numAnuladas
+
+      if (modoAnulacao === 'redistribuir') {
+        // Redistribuir: ignora questões anuladas, calcula sobre as válidas
+        // e depois escala para o total de questões
+        for (let i = 0; i < gabaritoArr.length; i++) {
+          const key = `q${i + 1}`
+          if (gabaritoArr[i] === 'X') continue // ignora anuladas
+          if (questoes[key] !== undefined) {
+            acertos += questoes[key]
+          }
+        }
+        // Escala: se tinha 10 questões e 2 anuladas, os acertos nas 8 são escalados para 10
+        if (numValidas > 0 && numValidas < gabaritoArr.length) {
+          acertos = (acertos / numValidas) * gabaritoArr.length
+        }
+      } else {
+        // Contar como certa: anulada = 1 ponto automático
+        for (let i = 0; i < gabaritoArr.length; i++) {
+          const key = `q${i + 1}`
+          if (gabaritoArr[i] === 'X') {
+            acertos++ // ponto automático
+          } else if (questoes[key] !== undefined) {
+            acertos += questoes[key]
+          }
         }
       }
       return Math.round(acertos * 100) / 100
@@ -73,24 +91,46 @@ export default function CorrecaoPage() {
     ) => {
       if (prova.modo_avaliacao !== 'nota' || !prova.nota_total) return null
 
+      const gabArr = prova.gabarito ? prova.gabarito.split(',') : []
+      const modoAnulacao = prova.modo_anulacao || 'contar_certa'
+
       if (prova.pesos_questoes) {
         const pesos = prova.pesos_questoes.split(',').map(Number)
         let nota = 0
-        const gabArr = prova.gabarito
-          ? prova.gabarito.split(',')
-          : []
-        for (let i = 0; i < numQuestoes; i++) {
-          const key = `q${i + 1}`
-          const peso = pesos[i] ?? 1
-          if (gabArr[i] === 'X') {
-            nota += peso
-          } else if (questoes[key] !== undefined) {
-            nota += questoes[key] * peso
+        let pesoTotal = pesos.reduce((s, p) => s + p, 0)
+
+        if (modoAnulacao === 'redistribuir') {
+          // Calcula nota só das válidas, escala proporcionalmente
+          let notaValidas = 0
+          let pesoValidas = 0
+          for (let i = 0; i < numQuestoes; i++) {
+            const key = `q${i + 1}`
+            const peso = pesos[i] ?? 1
+            if (gabArr[i] === 'X') continue
+            pesoValidas += peso
+            if (questoes[key] !== undefined) {
+              notaValidas += questoes[key] * peso
+            }
+          }
+          // Escala para peso total
+          nota = pesoValidas > 0 ? (notaValidas / pesoValidas) * pesoTotal : 0
+        } else {
+          // Contar como certa: anulada = peso total
+          for (let i = 0; i < numQuestoes; i++) {
+            const key = `q${i + 1}`
+            const peso = pesos[i] ?? 1
+            if (gabArr[i] === 'X') {
+              nota += peso
+            } else if (questoes[key] !== undefined) {
+              nota += questoes[key] * peso
+            }
           }
         }
-        return Math.round(nota * 100) / 100
+        // Normaliza para nota_total
+        return Math.round((nota / pesoTotal) * prova.nota_total * 100) / 100
       }
 
+      // Sem pesos: usa acertos (já escalado se redistribuir)
       return Math.round((acertos / numQuestoes) * prova.nota_total * 100) / 100
     },
     []
@@ -194,7 +234,7 @@ export default function CorrecaoPage() {
       return { presenca, questoes, acertos: 0, percentual: 0, nota: null }
     }
 
-    const acertos = calcularAcertos(questoes, gabArr)
+    const acertos = calcularAcertos(questoes, gabArr, prova.modo_anulacao)
     const percentual =
       prova.num_questoes > 0
         ? Math.round((acertos / prova.num_questoes) * 10000) / 100
