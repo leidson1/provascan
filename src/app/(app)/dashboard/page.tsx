@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   FileText,
   Users,
@@ -89,6 +90,7 @@ function formatDate(dateStr: string | null) {
 
 export default function DashboardPage() {
   const supabase = createClient()
+  const router = useRouter()
   const { workspaceId, role } = useWorkspace()
   const [stats, setStats] = useState<DashboardStats>({
     provas: 0,
@@ -205,7 +207,7 @@ export default function DashboardPage() {
           </p>
         </div>
         {role === 'dono' && (
-          <Button render={<Link href="/provas/nova" />}>
+          <Button onClick={() => router.push('/provas?nova=1')}>
             <Plus className="mr-2 h-4 w-4" />
             Nova Prova
           </Button>
@@ -252,7 +254,7 @@ export default function DashboardPage() {
                 Crie sua primeira prova para começar!
               </p>
               {role === 'dono' && (
-                <Button render={<Link href="/provas/nova" />} className="mt-4" size="sm">
+                <Button onClick={() => router.push('/provas?nova=1')} className="mt-4" size="sm">
                   <Plus className="mr-2 h-4 w-4" />
                   Nova Prova
                 </Button>

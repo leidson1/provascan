@@ -2,9 +2,9 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, FileText, MoreVertical, ClipboardCheck, BookOpen,
   BarChart3, CreditCard, Trash2, Pencil, Save, Loader2, CheckCircle2
@@ -94,11 +94,20 @@ function TableSkeleton() {
 }
 
 // ══════════════════════════════════════════════════════
-//  MAIN PAGE
+//  MAIN PAGE (with Suspense for useSearchParams)
 // ══════════════════════════════════════════════════════
-export default function ProvasPage() {
+export default function ProvasPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" /></div>}>
+      <ProvasPage />
+    </Suspense>
+  )
+}
+
+function ProvasPage() {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { workspaceId, role } = useWorkspace()
   const isCorretor = role === 'corretor'
 
@@ -136,6 +145,15 @@ export default function ProvasPage() {
   useEffect(() => {
     fetchAll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-open create modal if ?nova=1
+  useEffect(() => {
+    if (searchParams.get('nova') === '1' && !isCorretor && !loading) {
+      openCreateModal()
+      // Clean the URL param
+      router.replace('/provas', { scroll: false })
+    }
+  }, [loading, searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep formTiposQuestoes in sync with formNumQuestoes
   useEffect(() => {
