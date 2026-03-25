@@ -411,9 +411,10 @@ function CameraPage() {
     const existing = existingResults.get(currentAlunoId)
     const payload = {
       user_id: userId,
+      workspace_id: (prova as any).workspace_id,
       prova_id: prova.id,
       aluno_id: currentAlunoId,
-      presenca: 'P',
+      presenca: '*',
       respostas: respostasObj,
       acertos,
       percentual,
