@@ -43,7 +43,7 @@ export function AnswerKeyEditor({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-gray-700">
-          {filledCount}/{numQuestoes} questoes preenchidas
+          {filledCount}/{numQuestoes} questões preenchidas
         </p>
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <span className="flex items-center gap-1">
