@@ -507,35 +507,21 @@ function ProvasPage() {
       {/*  MODAL: Criar / Editar Prova                    */}
       {/* ════════════════════════════════════════════════ */}
       <Dialog open={provaDialogOpen} onOpenChange={setProvaDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingProva ? 'Editar Prova' : 'Nova Prova'}</DialogTitle>
             <DialogDescription>
-              {editingProva
-                ? 'Altere os dados da prova abaixo.'
-                : 'Preencha os dados para criar uma nova prova.'}
+              {editingProva ? 'Altere os dados da prova.' : 'Preencha os dados e defina o gabarito.'}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Row 1: Data + Bloco */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="m-data">Data da Prova</Label>
-                <Input id="m-data" type="date" value={formData} onChange={(e) => setFormData(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="m-bloco">Bloco</Label>
-                <Input id="m-bloco" value={formBloco} onChange={(e) => setFormBloco(e.target.value)} />
-              </div>
-            </div>
-
-            {/* Row 2: Disciplina + Turma */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Disciplina</Label>
+          <div className="space-y-3 py-1">
+            {/* Disciplina + Turma */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Disciplina</Label>
                 <Select value={formDisciplinaId} onValueChange={(v) => v && setFormDisciplinaId(v)}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     {disciplinas.map((d) => (
                       <SelectItem key={d.id} value={String(d.id)}>{d.nome}</SelectItem>
@@ -543,10 +529,10 @@ function ProvasPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label>Turma</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Turma</Label>
                 <Select value={formTurmaId} onValueChange={(v) => v && setFormTurmaId(v)}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     {turmas.map((t) => (
                       <SelectItem key={t.id} value={String(t.id)}>{t.serie} - {t.turma}</SelectItem>
@@ -556,10 +542,18 @@ function ProvasPage() {
               </div>
             </div>
 
-            {/* Row 3: Tipo de Prova + Nº Questões + Alternativas/Critério */}
-            <div className={`grid gap-3 ${formTipoProva === 'mista' ? 'grid-cols-3' : formTipoProva === 'discursiva' ? 'grid-cols-3' : 'grid-cols-3'}`}>
-              <div className="space-y-1.5">
-                <Label>Tipo de Prova</Label>
+            {/* Data + Bloco + Tipo */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Data</Label>
+                <Input className="h-8 text-xs" type="date" value={formData} onChange={(e) => setFormData(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Bloco</Label>
+                <Input className="h-8 text-xs" value={formBloco} onChange={(e) => setFormBloco(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tipo</Label>
                 <Select value={formTipoProva} onValueChange={(v) => {
                   const tipo = v as 'objetiva' | 'mista' | 'discursiva'
                   setFormTipoProva(tipo)
@@ -570,7 +564,7 @@ function ProvasPage() {
                     setFormTiposQuestoes(Array(formNumQuestoes).fill('O'))
                   }
                 }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="objetiva">Objetiva</SelectItem>
                     <SelectItem value="mista">Mista</SelectItem>
@@ -578,67 +572,96 @@ function ProvasPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="m-nq">Nº Questões</Label>
-                <Input id="m-nq" type="number" min={1} max={50} value={formNumQuestoes}
+            </div>
+
+            {/* Questões + Alternativas/Critério */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Questões</Label>
+                <Input className="h-8 text-xs" type="number" min={1} max={50} value={formNumQuestoes}
                   onChange={(e) => {
                     const n = Number(e.target.value)
                     setFormNumQuestoes(n)
-                    if (formTipoProva === 'discursiva') {
-                      setFormTiposQuestoes(Array(n).fill('D'))
-                    }
+                    if (formTipoProva === 'discursiva') setFormTiposQuestoes(Array(n).fill('D'))
                   }} />
               </div>
-              {formTipoProva === 'discursiva' ? (
-                <div className="space-y-1.5">
-                  <Label>Critério</Label>
-                  <Select value={String(formCriterioDiscursiva)} onValueChange={(v) => v && setFormCriterioDiscursiva(Number(v))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2">2 níveis (C/E)</SelectItem>
-                      <SelectItem value="3">3 níveis (C/P/E)</SelectItem>
-                      <SelectItem value="4">4 níveis (E/B/P/I)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <Label>Alternativas</Label>
+              {formTipoProva !== 'discursiva' && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Alternativas</Label>
                   <Select value={String(formNumAlternativas)} onValueChange={(v) => v && setFormNumAlternativas(Number(v))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="4">4 (A-D)</SelectItem>
-                      <SelectItem value="5">5 (A-E)</SelectItem>
+                      <SelectItem value="4">4 (A–D)</SelectItem>
+                      <SelectItem value="5">5 (A–E)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               )}
+              {formTipoProva !== 'objetiva' && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Critério</Label>
+                  <Select value={String(formCriterioDiscursiva)} onValueChange={(v) => v && setFormCriterioDiscursiva(Number(v))}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">2 (C/E)</SelectItem>
+                      <SelectItem value="3">3 (C/P/E)</SelectItem>
+                      <SelectItem value="4">4 (E/B/P/I)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Avaliação</Label>
+                <Select value={formModoAvaliacao} onValueChange={(v) => v && setFormModoAvaliacao(v as 'acertos' | 'nota')} disabled={formTipoProva === 'discursiva'}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="acertos">Acertos</SelectItem>
+                    <SelectItem value="nota">Nota</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            {/* Row 4: Question type toggle grid (mista only) */}
+            {/* Nota Total (se nota e não discursiva) + Anulação */}
+            <div className="grid grid-cols-2 gap-2">
+              {formModoAvaliacao === 'nota' && formTipoProva !== 'discursiva' && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Nota Total</Label>
+                  <Input className="h-8 text-xs" type="number" min={1} step="0.1" value={formNotaTotal}
+                    onChange={(e) => setFormNotaTotal(Number(e.target.value))} />
+                </div>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Se anular questão</Label>
+                <Select value={formModoAnulacao} onValueChange={(v) => v && setFormModoAnulacao(v as 'contar_certa' | 'redistribuir')}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="contar_certa">Contar certa</SelectItem>
+                    <SelectItem value="redistribuir">Redistribuir</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Toggle O/D por questão (mista) */}
             {formTipoProva === 'mista' && formNumQuestoes > 0 && (
-              <div className="space-y-2">
-                <Label>Tipo por questão <span className="font-normal text-xs text-muted-foreground ml-1">Clique para alternar O/D</span></Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Tipo por questão <span className="font-normal text-muted-foreground">(clique para alternar)</span></Label>
                 <div className="flex flex-wrap gap-1">
                   {Array.from({ length: formNumQuestoes }).map((_, i) => {
                     const tipo = formTiposQuestoes[i] || 'O'
                     return (
-                      <button
-                        key={i}
-                        type="button"
+                      <button key={i} type="button"
                         onClick={() => {
-                          const newTipos = [...formTiposQuestoes]
-                          while (newTipos.length <= i) newTipos.push('O')
-                          newTipos[i] = newTipos[i] === 'D' ? 'O' : 'D'
-                          setFormTiposQuestoes(newTipos)
+                          const nt = [...formTiposQuestoes]
+                          while (nt.length <= i) nt.push('O')
+                          nt[i] = nt[i] === 'D' ? 'O' : 'D'
+                          setFormTiposQuestoes(nt)
                         }}
-                        className={`w-9 h-9 rounded text-xs font-bold border transition-colors ${
-                          tipo === 'D'
-                            ? 'bg-blue-500 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="text-[9px] leading-none opacity-70">{i + 1}</div>
+                        className={`w-8 h-7 rounded text-[10px] font-bold border transition-colors ${
+                          tipo === 'D' ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                        }`}>
+                        <div className="leading-none opacity-70" style={{fontSize:'8px'}}>{i+1}</div>
                         <div className="leading-none">{tipo}</div>
                       </button>
                     )
@@ -647,284 +670,73 @@ function ProvasPage() {
               </div>
             )}
 
-            {/* Row 5: Critério for mista (if has discursive questions) */}
-            {formTipoProva === 'mista' && formTiposQuestoes.some(t => t === 'D') && (
-              <div className="space-y-1.5">
-                <Label>Critério das Discursivas</Label>
-                <Select value={String(formCriterioDiscursiva)} onValueChange={(v) => v && setFormCriterioDiscursiva(Number(v))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2">2 níveis (Certo / Errado)</SelectItem>
-                    <SelectItem value="3">3 níveis (Certo / Parcial / Errado)</SelectItem>
-                    <SelectItem value="4">4 níveis (Excelente / Bom / Parcial / Insuficiente)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Row 6: Avaliação + Anulação (same row) */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Avaliação</Label>
-                <Select
-                  value={formModoAvaliacao}
-                  onValueChange={(v) => v && setFormModoAvaliacao(v as 'acertos' | 'nota')}
-                  disabled={formTipoProva === 'discursiva'}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="acertos">Por Acertos</SelectItem>
-                    <SelectItem value="nota">Por Nota</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Anulação</Label>
-                <Select value={formModoAnulacao} onValueChange={(v) => v && setFormModoAnulacao(v as 'contar_certa' | 'redistribuir')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="contar_certa">Contar como certa</SelectItem>
-                    <SelectItem value="redistribuir">Redistribuir peso</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Row 7: Nota Total (only for nota mode, not discursiva which auto-calculates) */}
-            {formModoAvaliacao === 'nota' && formTipoProva !== 'discursiva' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="m-nota">Nota Total</Label>
-                <Input id="m-nota" type="number" min={1} step="0.1" value={formNotaTotal}
-                  onChange={(e) => setFormNotaTotal(Number(e.target.value))} />
-              </div>
-            )}
-
-            {/* ── SEPARATOR ── */}
-            <div className="border-t border-gray-200 pt-3">
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-sm font-semibold">Gabarito</Label>
-                <div className="flex items-center gap-3 text-[11px] text-gray-500">
-                  {formTipoProva !== 'discursiva' && (
-                    <>
-                      <span className="flex items-center gap-1">
-                        <span className="inline-block h-2.5 w-2.5 rounded bg-indigo-500" />
-                        Resposta
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="inline-block h-2.5 w-2.5 rounded bg-amber-500" />
-                        Anulada
-                      </span>
-                    </>
-                  )}
-                  {formTipoProva !== 'objetiva' && (
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block h-2.5 w-2.5 rounded bg-blue-500" />
-                      Discursiva
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Gabarito Grid */}
+            {/* ─── GABARITO ─── */}
+            <div className="border-t pt-2">
+              <Label className="text-xs font-semibold mb-2 block">Gabarito</Label>
               {(() => {
-                const ALTS = ['A', 'B', 'C', 'D', 'E'].slice(0, formNumAlternativas)
-                const DISC_LABELS: Record<number, string[]> = {
-                  2: ['C', 'E'],
-                  3: ['C', 'P', 'E'],
-                  4: ['E', 'B', 'P', 'I'],
-                }
-                const discLabels = DISC_LABELS[formCriterioDiscursiva] || DISC_LABELS[3]
-
-                // Parse current gabarito
+                const ALTS = ['A','B','C','D','E'].slice(0, formNumAlternativas)
+                const DL: Record<number,string[]> = { 2:['C','E'], 3:['C','P','E'], 4:['E','B','P','I'] }
+                const discL = DL[formCriterioDiscursiva] || DL[3]
                 const gabArr = formGabarito ? formGabarito.split(',') : []
                 while (gabArr.length < formNumQuestoes) gabArr.push('')
                 if (gabArr.length > formNumQuestoes) gabArr.length = formNumQuestoes
-
-                // Parse pesos
                 const pesosArr = [...formPesosQuestoes]
-                while (pesosArr.length < formNumQuestoes) pesosArr.push(0)
+                while (pesosArr.length < formNumQuestoes) pesosArr.push(1)
+                const tiposArr = formTipoProva === 'objetiva' ? Array(formNumQuestoes).fill('O')
+                  : formTipoProva === 'discursiva' ? Array(formNumQuestoes).fill('D')
+                  : formTiposQuestoes.length >= formNumQuestoes ? formTiposQuestoes
+                  : [...formTiposQuestoes, ...Array(formNumQuestoes - formTiposQuestoes.length).fill('O')]
+                const filled = gabArr.filter(a => a !== '').length
 
-                // Compute tipos for each question
-                const tiposArr = formTipoProva === 'objetiva'
-                  ? Array(formNumQuestoes).fill('O')
-                  : formTipoProva === 'discursiva'
-                    ? Array(formNumQuestoes).fill('D')
-                    : formTiposQuestoes.length >= formNumQuestoes
-                      ? formTiposQuestoes
-                      : [...formTiposQuestoes, ...Array(formNumQuestoes - formTiposQuestoes.length).fill('O')]
-
-                const filledCount = gabArr.filter((a) => a !== '').length
-
-                function handleGabSelect(idx: number, letter: string) {
-                  const updated = [...gabArr]
-                  updated[idx] = updated[idx] === letter ? '' : letter
-                  setFormGabarito(updated.join(','))
-                }
-
-                function handleGabAnular(idx: number) {
-                  const updated = [...gabArr]
-                  updated[idx] = updated[idx] === 'X' ? '' : 'X'
-                  setFormGabarito(updated.join(','))
-                }
-
-                function handlePesoChange(idx: number, val: number) {
-                  const updated = [...pesosArr]
-                  updated[idx] = val
-                  setFormPesosQuestoes(updated)
-                }
+                function gSel(i: number, l: string) { const u=[...gabArr]; u[i]=u[i]===l?'':l; setFormGabarito(u.join(',')) }
+                function gAnul(i: number) { const u=[...gabArr]; u[i]=u[i]==='X'?'':'X'; setFormGabarito(u.join(',')) }
+                function pChg(i: number, v: number) { const u=[...pesosArr]; u[i]=v; setFormPesosQuestoes(u) }
 
                 return (
                   <div className="space-y-2">
-                    {/* Scrollable grid area */}
-                    <div className="max-h-[280px] overflow-y-auto border border-gray-200 rounded-lg">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-gray-50 z-10">
-                          <tr className="border-b border-gray-200">
-                            <th className="w-10 py-1.5 px-2 text-left font-semibold text-gray-600">Q</th>
-                            {/* Show objective or discursive headers based on if there are any of each type */}
-                            {formTipoProva === 'objetiva' ? (
+                    <div className="max-h-[240px] overflow-y-auto rounded border border-gray-200">
+                      {Array.from({ length: formNumQuestoes }).map((_, idx) => {
+                        const isD = tiposArr[idx] === 'D'
+                        const ans = gabArr[idx] || ''
+                        return (
+                          <div key={idx} className={`flex items-center gap-1 px-2 py-0.5 border-b border-gray-50 ${isD ? 'bg-blue-50/50' : ''}`}>
+                            <span className="w-6 text-[10px] font-bold text-gray-400 text-right shrink-0">{idx+1}</span>
+                            {isD ? (
                               <>
-                                {ALTS.map(l => (
-                                  <th key={l} className="w-9 py-1.5 text-center font-semibold text-gray-600">{l}</th>
+                                {discL.map(l => (
+                                  <span key={l} className="inline-flex items-center justify-center w-7 h-6 rounded bg-blue-500 text-white text-[10px] font-bold">{l}</span>
                                 ))}
-                                <th className="w-9 py-1.5 text-center font-semibold text-amber-600">X</th>
-                              </>
-                            ) : formTipoProva === 'discursiva' ? (
-                              <>
-                                <th className="py-1.5 text-center font-semibold text-gray-600" colSpan={discLabels.length}>Critério</th>
-                                <th className="w-16 py-1.5 text-center font-semibold text-gray-600">Valor</th>
+                                {(formTipoProva === 'discursiva' || formTipoProva === 'mista') && (
+                                  <input type="number" min={0} step={0.5} value={pesosArr[idx] || ''}
+                                    onChange={(e) => pChg(idx, Number(e.target.value))}
+                                    className="w-12 h-6 text-[10px] text-center border border-gray-300 rounded ml-auto"
+                                    placeholder="pts" />
+                                )}
                               </>
                             ) : (
                               <>
                                 {ALTS.map(l => (
-                                  <th key={l} className="w-9 py-1.5 text-center font-semibold text-gray-600">{l}</th>
+                                  <button key={l} type="button" onClick={() => gSel(idx, l)}
+                                    className={`w-6 h-6 rounded text-[10px] font-bold transition-colors ${
+                                      ans===l ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                    }`}>{l}</button>
                                 ))}
-                                <th className="w-9 py-1.5 text-center font-semibold text-amber-600">X</th>
-                                <th className="w-16 py-1.5 text-center font-semibold text-gray-600">Valor</th>
+                                <button type="button" onClick={() => gAnul(idx)}
+                                  className={`w-6 h-6 rounded text-[10px] font-bold transition-colors ${
+                                    ans==='X' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                  }`}>X</button>
                               </>
                             )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Array.from({ length: formNumQuestoes }).map((_, idx) => {
-                            const tipo = tiposArr[idx] || 'O'
-                            const answer = gabArr[idx] || ''
-                            const isDisc = tipo === 'D'
-
-                            return (
-                              <tr key={idx} className={`border-b border-gray-100 ${isDisc ? 'bg-blue-50/40' : ''}`}>
-                                <td className="py-1 px-2 font-semibold text-gray-500 tabular-nums">{idx + 1}</td>
-                                {isDisc ? (
-                                  <>
-                                    {/* Discursive: show criterion buttons + valor */}
-                                    {formTipoProva === 'objetiva' ? null : formTipoProva === 'discursiva' ? (
-                                      <>
-                                        {discLabels.map(label => (
-                                          <td key={label} className="py-1 text-center">
-                                            <span className="inline-flex items-center justify-center w-7 h-6 rounded bg-blue-500 text-white text-[10px] font-bold">
-                                              {label}
-                                            </span>
-                                          </td>
-                                        ))}
-                                        <td className="py-1 px-1 text-center">
-                                          <input
-                                            type="number"
-                                            min={0}
-                                            step={0.1}
-                                            value={pesosArr[idx] || ''}
-                                            onChange={(e) => handlePesoChange(idx, Number(e.target.value))}
-                                            className="w-14 h-6 text-xs text-center border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                                            placeholder="0.0"
-                                          />
-                                        </td>
-                                      </>
-                                    ) : (
-                                      /* Mista: discursive row inside mixed grid */
-                                      <>
-                                        {ALTS.map((_, altIdx) => (
-                                          <td key={altIdx} className="py-1 text-center">
-                                            {altIdx < discLabels.length ? (
-                                              <span className="inline-flex items-center justify-center w-7 h-6 rounded bg-blue-500 text-white text-[10px] font-bold">
-                                                {discLabels[altIdx]}
-                                              </span>
-                                            ) : null}
-                                          </td>
-                                        ))}
-                                        <td className="py-1 text-center">
-                                          {/* X column empty for discursive */}
-                                        </td>
-                                        <td className="py-1 px-1 text-center">
-                                          <input
-                                            type="number"
-                                            min={0}
-                                            step={0.1}
-                                            value={pesosArr[idx] || ''}
-                                            onChange={(e) => handlePesoChange(idx, Number(e.target.value))}
-                                            className="w-14 h-6 text-xs text-center border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                                            placeholder="0.0"
-                                          />
-                                        </td>
-                                      </>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    {/* Objective: letter buttons + X */}
-                                    {ALTS.map(letter => (
-                                      <td key={letter} className="py-1 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleGabSelect(idx, letter)}
-                                          className={`w-7 h-6 rounded text-[10px] font-bold transition-colors ${
-                                            answer === letter
-                                              ? 'bg-indigo-500 text-white'
-                                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                          }`}
-                                        >
-                                          {letter}
-                                        </button>
-                                      </td>
-                                    ))}
-                                    <td className="py-1 text-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleGabAnular(idx)}
-                                        className={`w-7 h-6 rounded text-[10px] font-bold transition-colors ${
-                                          answer === 'X'
-                                            ? 'bg-amber-500 text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                        }`}
-                                      >
-                                        X
-                                      </button>
-                                    </td>
-                                    {/* Valor column placeholder for mista alignment */}
-                                    {formTipoProva === 'mista' && (
-                                      <td className="py-1 text-center">
-                                        <span className="text-[10px] text-gray-300">-</span>
-                                      </td>
-                                    )}
-                                  </>
-                                )}
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
+                          </div>
+                        )
+                      })}
                     </div>
-
-                    {/* Summary bar */}
-                    <div className={`flex items-center justify-between rounded-md px-3 py-1.5 text-xs font-medium ${
-                      filledCount === formNumQuestoes
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-amber-50 text-amber-700'
+                    <div className={`rounded px-2 py-1 text-[11px] font-medium flex justify-between ${
+                      filled >= formNumQuestoes ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
                     }`}>
-                      <span>{filledCount}/{formNumQuestoes} questões preenchidas</span>
-                      {formTipoProva === 'discursiva' && (
-                        <span>Nota total: {pesosArr.slice(0, formNumQuestoes).reduce((s, v) => s + (v || 0), 0).toFixed(1)}</span>
-                      )}
-                      {formTipoProva === 'mista' && formTiposQuestoes.some(t => t === 'D') && (
-                        <span>Soma disc.: {pesosArr.slice(0, formNumQuestoes).filter((_, i) => tiposArr[i] === 'D').reduce((s, v) => s + (v || 0), 0).toFixed(1)}</span>
+                      <span>{filled}/{formNumQuestoes} preenchidas</span>
+                      {formTipoProva !== 'objetiva' && (
+                        <span>Total: {pesosArr.slice(0,formNumQuestoes).filter((_,i)=>tiposArr[i]==='D').reduce((s,v)=>s+(v||0),0).toFixed(1)} pts</span>
                       )}
                     </div>
                   </div>
@@ -937,7 +749,7 @@ function ProvasPage() {
             <Button variant="outline" onClick={() => setProvaDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveProva} disabled={saving} className="gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {saving ? 'Salvando...' : editingProva ? 'Salvar Alterações' : 'Criar Prova'}
+              {saving ? 'Salvando...' : editingProva ? 'Salvar' : 'Criar Prova'}
             </Button>
           </DialogFooter>
         </DialogContent>
