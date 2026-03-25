@@ -60,14 +60,49 @@ export default function EquipePage() {
   }, [role, router])
 
   const fetchMembers = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('workspace_members')
-      .select('*, profile:profiles(nome, email)')
-      .eq('workspace_id', workspaceId)
+    try {
+      // Try join first
+      const { data, error } = await supabase
+        .from('workspace_members')
+        .select('*, profile:profiles(nome, email)')
+        .eq('workspace_id', workspaceId)
 
-    if (error) { toast.error('Erro ao carregar equipe'); return }
-    setMembers((data as unknown as Member[]) || [])
-    setLoading(false)
+      if (!error && data) {
+        setMembers((data as unknown as Member[]) || [])
+        setLoading(false)
+        return
+      }
+
+      // Fallback: fetch members then profiles separately
+      const { data: membersData } = await supabase
+        .from('workspace_members')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+
+      if (!membersData || membersData.length === 0) {
+        setMembers([])
+        setLoading(false)
+        return
+      }
+
+      const userIds = membersData.map((m: { user_id: string }) => m.user_id)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, nome, email')
+        .in('id', userIds)
+
+      const profileMap = new Map((profiles || []).map((p: { id: string; nome: string; email: string }) => [p.id, p]))
+      const merged = membersData.map((m: { user_id: string }) => ({
+        ...m,
+        profile: profileMap.get(m.user_id) || { nome: 'Sem nome', email: m.user_id },
+      })) as unknown as Member[]
+
+      setMembers(merged)
+    } catch {
+      toast.error('Erro ao carregar equipe')
+    } finally {
+      setLoading(false)
+    }
   }, [supabase, workspaceId])
 
   useEffect(() => {
