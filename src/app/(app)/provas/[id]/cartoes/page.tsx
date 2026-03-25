@@ -158,7 +158,7 @@ export default function CartoesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href={`/provas/${provaId}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-2")}>
+        <Link href="/provas" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-2")}>
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Link>

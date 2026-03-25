@@ -166,7 +166,7 @@ export default function EstatisticasPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <Link href={`/provas/${prova.id}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-2")}>
+          <Link href="/provas" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-2")}>
             <ArrowLeft className="h-4 w-4" />
             Voltar
           </Link>
