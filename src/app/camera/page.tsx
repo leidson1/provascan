@@ -322,11 +322,16 @@ function CameraPage() {
         const engine = omrEngineRef.current
         const nq = prova?.num_questoes || gabarito.length
         const nalts = prova?.num_alternativas || 5
-        const result: OMRResult = await engine.process(canvas, nq, nalts)
+        const result = engine.process(canvas, nq, nalts)
 
-        if (result && result.respostas && result.respostas.length > 0) {
-          setCurrentRespostas(result.respostas.map((r: string) => r.toUpperCase()))
-          setCurrentAlunoId(result.alunoId)
+        if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
+          // OMRResposta[] → string[] (extrair a letra marcada de cada questão)
+          const respostasLetras = result.respostas.map((r: { marcada: string | null }) =>
+            r.marcada ? r.marcada.toUpperCase() : ''
+          )
+          setCurrentRespostas(respostasLetras)
+          const alunoId = result.qr?.alunoId || null
+          setCurrentAlunoId(alunoId)
           setManualMode(false)
           setScreen('result')
         } else {
