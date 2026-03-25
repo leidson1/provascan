@@ -12,6 +12,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -88,6 +89,7 @@ function formatDate(dateStr: string | null) {
 
 export default function DashboardPage() {
   const supabase = createClient()
+  const { workspaceId, role } = useWorkspace()
   const [stats, setStats] = useState<DashboardStats>({
     provas: 0,
     turmas: 0,
@@ -99,38 +101,33 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetchDashboard() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return
-
-      const uid = user.id
+      if (!workspaceId) return
 
       const [provasRes, turmasRes, alunosRes, correcRes, recentRes] =
         await Promise.all([
           supabase
             .from('provas')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', uid)
+            .eq('workspace_id', workspaceId)
             .neq('status', 'excluida'),
           supabase
             .from('turmas')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', uid)
+            .eq('workspace_id', workspaceId)
             .eq('ativo', true),
           supabase
             .from('alunos')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', uid)
+            .eq('workspace_id', workspaceId)
             .eq('ativo', true),
           supabase
             .from('resultados')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', uid),
+            .eq('workspace_id', workspaceId),
           supabase
             .from('provas')
             .select('id, data, status, disciplina:disciplinas(nome), turma:turmas(serie, turma)')
-            .eq('user_id', uid)
+            .eq('workspace_id', workspaceId)
             .neq('status', 'excluida')
             .order('created_at', { ascending: false })
             .limit(5),
@@ -151,7 +148,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboard()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workspaceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -207,10 +204,12 @@ export default function DashboardPage() {
             Visão geral do seu ProvaScan
           </p>
         </div>
-        <Button render={<Link href="/provas/nova" />}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nova Prova
-        </Button>
+        {role === 'dono' && (
+          <Button render={<Link href="/provas/nova" />}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Prova
+          </Button>
+        )}
       </div>
 
       {/* Stat cards */}
@@ -252,10 +251,12 @@ export default function DashboardPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Crie sua primeira prova para começar!
               </p>
-              <Button render={<Link href="/provas/nova" />} className="mt-4" size="sm">
-                <Plus className="mr-2 h-4 w-4" />
-                Nova Prova
-              </Button>
+              {role === 'dono' && (
+                <Button render={<Link href="/provas/nova" />} className="mt-4" size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nova Prova
+                </Button>
+              )}
             </div>
           ) : (
             <Table>

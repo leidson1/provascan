@@ -6,9 +6,30 @@ export interface Profile {
   created_at: string
 }
 
+export interface Workspace {
+  id: number
+  nome: string
+  nome_instituicao: string | null
+  logo_url: string | null
+  created_by: string
+  created_at: string
+}
+
+export interface WorkspaceMember {
+  id: number
+  workspace_id: number
+  user_id: string
+  role: 'dono' | 'corretor'
+  created_at: string
+  // Joined
+  workspace?: Workspace
+  profile?: Profile
+}
+
 export interface Disciplina {
   id: number
   user_id: string
+  workspace_id: number
   nome: string
   ativo: boolean
   created_at: string
@@ -17,6 +38,7 @@ export interface Disciplina {
 export interface Turma {
   id: number
   user_id: string
+  workspace_id: number
   serie: string
   turma: string
   turno: string | null
@@ -27,6 +49,7 @@ export interface Turma {
 export interface Aluno {
   id: number
   user_id: string
+  workspace_id: number
   turma_id: number
   nome: string
   numero: number | null
@@ -37,6 +60,7 @@ export interface Aluno {
 export interface Prova {
   id: number
   user_id: string
+  workspace_id: number
   data: string | null
   disciplina_id: number | null
   turma_id: number | null
@@ -59,6 +83,7 @@ export interface Prova {
 export interface Resultado {
   id: number
   user_id: string
+  workspace_id: number
   prova_id: number
   aluno_id: number
   presenca: string | null

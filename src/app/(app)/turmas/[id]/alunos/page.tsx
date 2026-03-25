@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 import {
   Plus,
@@ -63,6 +64,8 @@ export default function AlunosPage() {
   const params = useParams()
   const turmaId = params.id as string
   const supabase = createClient()
+  const { workspaceId, role } = useWorkspace()
+  const isCorretor = role === 'corretor'
 
   const [turma, setTurma] = useState<Turma | null>(null)
   const [alunos, setAlunos] = useState<Aluno[]>([])
@@ -173,6 +176,7 @@ export default function AlunosPage() {
           numero: Number(numero),
           turma_id: turmaId,
           user_id: user.id,
+          workspace_id: workspaceId,
         })
 
         if (error) throw error
@@ -213,6 +217,7 @@ export default function AlunosPage() {
         numero: startNum + i,
         turma_id: turmaId,
         user_id: user.id,
+        workspace_id: workspaceId,
       }))
 
       const { error } = await supabase.from('alunos').insert(rows)
@@ -269,16 +274,18 @@ export default function AlunosPage() {
               <Badge variant="secondary">{alunos.length}</Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={openImportDialog}>
-              <Upload className="size-4" data-icon="inline-start" />
-              Importar em Lote
-            </Button>
-            <Button onClick={openAddDialog}>
-              <Plus className="size-4" data-icon="inline-start" />
-              Novo Aluno
-            </Button>
-          </div>
+          {!isCorretor && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={openImportDialog}>
+                <Upload className="size-4" data-icon="inline-start" />
+                Importar em Lote
+              </Button>
+              <Button onClick={openAddDialog}>
+                <Plus className="size-4" data-icon="inline-start" />
+                Novo Aluno
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -294,16 +301,18 @@ export default function AlunosPage() {
           <p className="mt-4 text-sm text-muted-foreground">
             Nenhum aluno cadastrado nesta turma.
           </p>
-          <div className="mt-4 flex items-center gap-2">
-            <Button onClick={openImportDialog} variant="outline">
-              <Upload className="size-4" data-icon="inline-start" />
-              Importar em Lote
-            </Button>
-            <Button onClick={openAddDialog}>
-              <Plus className="size-4" data-icon="inline-start" />
-              Adicionar aluno
-            </Button>
-          </div>
+          {!isCorretor && (
+            <div className="mt-4 flex items-center gap-2">
+              <Button onClick={openImportDialog} variant="outline">
+                <Upload className="size-4" data-icon="inline-start" />
+                Importar em Lote
+              </Button>
+              <Button onClick={openAddDialog}>
+                <Plus className="size-4" data-icon="inline-start" />
+                Adicionar aluno
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border">
@@ -312,7 +321,7 @@ export default function AlunosPage() {
               <TableRow>
                 <TableHead className="w-[70px]">N.º</TableHead>
                 <TableHead>Nome</TableHead>
-                <TableHead className="w-[70px]">Ações</TableHead>
+                {!isCorretor && <TableHead className="w-[70px]">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -322,29 +331,31 @@ export default function AlunosPage() {
                     <Badge variant="outline">{aluno.numero}</Badge>
                   </TableCell>
                   <TableCell className="font-medium">{aluno.nome}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={<Button variant="ghost" size="icon-sm" />}
-                      >
-                        <MoreVertical className="size-4" />
-                        <span className="sr-only">Ações</span>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEditDialog(aluno)}>
-                          <Pencil className="size-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => openDeleteDialog(aluno)}
+                  {!isCorretor && (
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={<Button variant="ghost" size="icon-sm" />}
                         >
-                          <Trash2 className="size-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+                          <MoreVertical className="size-4" />
+                          <span className="sr-only">Ações</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(aluno)}>
+                            <Pencil className="size-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => openDeleteDialog(aluno)}
+                          >
+                            <Trash2 className="size-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

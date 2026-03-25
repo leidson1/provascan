@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -94,6 +95,8 @@ function TableSkeleton() {
 export default function ProvasPage() {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const { workspaceId, role } = useWorkspace()
+  const isCorretor = role === 'corretor'
 
   const [provas, setProvas] = useState<ProvaRow[]>([])
   const [disciplinas, setDisciplinas] = useState<Disciplina[]>([])
@@ -135,19 +138,19 @@ export default function ProvasPage() {
       supabase
         .from('provas')
         .select('*, disciplina:disciplinas(nome), turma:turmas(serie, turma)')
-        .eq('user_id', user.id)
+        .eq('workspace_id', workspaceId)
         .neq('status', 'excluida')
         .order('created_at', { ascending: false }),
       supabase
         .from('disciplinas')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('workspace_id', workspaceId)
         .eq('ativo', true)
         .order('nome'),
       supabase
         .from('turmas')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('workspace_id', workspaceId)
         .eq('ativo', true)
         .order('serie'),
     ])
@@ -200,6 +203,7 @@ export default function ProvasPage() {
 
     const payload = {
       user_id: userId,
+      workspace_id: workspaceId,
       data: formData || null,
       disciplina_id: formDisciplinaId ? Number(formDisciplinaId) : null,
       turma_id: formTurmaId ? Number(formTurmaId) : null,
@@ -298,10 +302,12 @@ export default function ProvasPage() {
           </h1>
           <p className="text-sm text-gray-500">Gerencie suas provas e gabaritos</p>
         </div>
-        <Button onClick={openCreateModal} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nova Prova
-        </Button>
+        {!isCorretor && (
+          <Button onClick={openCreateModal} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nova Prova
+          </Button>
+        )}
       </div>
 
       {/* Table */}
@@ -312,9 +318,11 @@ export default function ProvasPage() {
               <FileText className="mx-auto mb-3 h-10 w-10 text-gray-300" />
               <p className="text-sm font-medium text-gray-900">Nenhuma prova encontrada</p>
               <p className="mt-1 text-sm text-gray-500">Crie sua primeira prova para começar!</p>
-              <Button onClick={openCreateModal} size="sm" className="mt-4 gap-2">
-                <Plus className="h-4 w-4" /> Nova Prova
-              </Button>
+              {!isCorretor && (
+                <Button onClick={openCreateModal} size="sm" className="mt-4 gap-2">
+                  <Plus className="h-4 w-4" /> Nova Prova
+                </Button>
+              )}
             </div>
           ) : (
             <Table>
@@ -343,13 +351,15 @@ export default function ProvasPage() {
                         <span className="inline-flex items-center gap-1 text-xs text-green-600">
                           <CheckCircle2 className="h-3.5 w-3.5" /> Definido
                         </span>
-                      ) : (
+                      ) : !isCorretor ? (
                         <button
                           onClick={() => openGabaritoModal(prova)}
                           className="text-xs text-indigo-600 hover:underline font-medium"
                         >
                           Definir
                         </button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Pendente</span>
                       )}
                     </TableCell>
                     <TableCell>{statusBadge(prova.status)}</TableCell>
@@ -359,26 +369,36 @@ export default function ProvasPage() {
                           <MoreVertical className="h-4 w-4" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditModal(prova)}>
-                            <Pencil className="mr-2 h-4 w-4" /> Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openGabaritoModal(prova)}>
-                            <BookOpen className="mr-2 h-4 w-4" /> Gabarito
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
+                          {!isCorretor && (
+                            <>
+                              <DropdownMenuItem onClick={() => openEditModal(prova)}>
+                                <Pencil className="mr-2 h-4 w-4" /> Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openGabaritoModal(prova)}>
+                                <BookOpen className="mr-2 h-4 w-4" /> Gabarito
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           <DropdownMenuItem onClick={() => router.push(`/provas/${prova.id}/correcao`)}>
                             <ClipboardCheck className="mr-2 h-4 w-4" /> Corrigir
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => router.push(`/provas/${prova.id}/estatisticas`)}>
                             <BarChart3 className="mr-2 h-4 w-4" /> Estatísticas
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/provas/${prova.id}/cartoes`)}>
-                            <CreditCard className="mr-2 h-4 w-4" /> Gerar Cartões
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => setDeleteId(prova.id)}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                          </DropdownMenuItem>
+                          {!isCorretor && (
+                            <DropdownMenuItem onClick={() => router.push(`/provas/${prova.id}/cartoes`)}>
+                              <CreditCard className="mr-2 h-4 w-4" /> Gerar Cartões
+                            </DropdownMenuItem>
+                          )}
+                          {!isCorretor && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => setDeleteId(prova.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

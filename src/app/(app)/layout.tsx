@@ -7,6 +7,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sidebar } from '@/components/sidebar'
 import { Header } from '@/components/header'
+import { WorkspaceProvider } from '@/contexts/workspace-context'
 import type { Profile } from '@/types/database'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
 
   const [user, setUser] = useState<Pick<Profile, 'nome' | 'email'> | null>(null)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -27,6 +29,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         router.push('/login')
         return
       }
+
+      setAuthUserId(authUser.id)
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -85,19 +89,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!user) return null
+  if (!user || !authUserId) return null
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar user={user} currentPath={pathname} />
+    <WorkspaceProvider userId={authUserId}>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar user={user} currentPath={pathname} />
 
-      <div className="flex flex-1 flex-col overflow-hidden lg:pl-0">
-        <Header user={user} currentPath={pathname} />
+        <div className="flex flex-1 flex-col overflow-hidden lg:pl-0">
+          <Header user={user} currentPath={pathname} />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {children}
-        </main>
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </WorkspaceProvider>
   )
 }

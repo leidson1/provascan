@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { Plus, Pencil, Trash2, MoreVertical, Users, GraduationCap } from 'lucide-react'
@@ -56,6 +57,8 @@ const TURNOS = ['Manhã', 'Tarde', 'Integral', 'Noite'] as const
 
 export default function TurmasPage() {
   const supabase = createClient()
+  const { workspaceId, role } = useWorkspace()
+  const isCorretor = role === 'corretor'
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -72,6 +75,7 @@ export default function TurmasPage() {
       const { data, error } = await supabase
         .from('turmas')
         .select('*, alunos(count)')
+        .eq('workspace_id', workspaceId)
         .eq('ativo', true)
         .order('serie')
         .order('turma')
@@ -83,7 +87,7 @@ export default function TurmasPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [workspaceId])
 
   useEffect(() => {
     fetchTurmas()
@@ -136,7 +140,7 @@ export default function TurmasPage() {
 
         const { error } = await supabase
           .from('turmas')
-          .insert({ serie: serie.trim(), turma: turma.trim(), turno, user_id: user.id })
+          .insert({ serie: serie.trim(), turma: turma.trim(), turno, user_id: user.id, workspace_id: workspaceId })
 
         if (error) throw error
         toast.success('Turma criada com sucesso.')
@@ -191,10 +195,12 @@ export default function TurmasPage() {
             Organize suas turmas por série e turno
           </p>
         </div>
-        <Button onClick={openAddDialog}>
-          <Plus className="size-4" data-icon="inline-start" />
-          Nova Turma
-        </Button>
+        {!isCorretor && (
+          <Button onClick={openAddDialog}>
+            <Plus className="size-4" data-icon="inline-start" />
+            Nova Turma
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -209,10 +215,12 @@ export default function TurmasPage() {
           <p className="mt-4 text-sm text-muted-foreground">
             Nenhuma turma cadastrada.
           </p>
-          <Button onClick={openAddDialog} variant="outline" className="mt-4">
-            <Plus className="size-4" data-icon="inline-start" />
-            Adicionar turma
-          </Button>
+          {!isCorretor && (
+            <Button onClick={openAddDialog} variant="outline" className="mt-4">
+              <Plus className="size-4" data-icon="inline-start" />
+              Adicionar turma
+            </Button>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border">
@@ -252,18 +260,22 @@ export default function TurmasPage() {
                           <Users className="size-4" />
                           Ver Alunos
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => openEditDialog(t)}>
-                          <Pencil className="size-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => openDeleteDialog(t)}
-                        >
-                          <Trash2 className="size-4" />
-                          Excluir
-                        </DropdownMenuItem>
+                        {!isCorretor && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => openEditDialog(t)}>
+                              <Pencil className="size-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => openDeleteDialog(t)}
+                            >
+                              <Trash2 className="size-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

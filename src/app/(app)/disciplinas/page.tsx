@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, MoreVertical, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,8 @@ interface Disciplina {
 
 export default function DisciplinasPage() {
   const supabase = createClient()
+  const { workspaceId, role } = useWorkspace()
+  const isCorretor = role === 'corretor'
   const [disciplinas, setDisciplinas] = useState<Disciplina[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -56,6 +59,7 @@ export default function DisciplinasPage() {
       const { data, error } = await supabase
         .from('disciplinas')
         .select('*')
+        .eq('workspace_id', workspaceId)
         .eq('ativo', true)
         .order('nome')
 
@@ -66,7 +70,7 @@ export default function DisciplinasPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [workspaceId])
 
   useEffect(() => {
     fetchDisciplinas()
@@ -111,7 +115,7 @@ export default function DisciplinasPage() {
 
         const { error } = await supabase
           .from('disciplinas')
-          .insert({ nome: nome.trim(), user_id: user.id })
+          .insert({ nome: nome.trim(), user_id: user.id, workspace_id: workspaceId })
 
         if (error) throw error
         toast.success('Disciplina criada com sucesso.')
@@ -164,10 +168,12 @@ export default function DisciplinasPage() {
             Gerencie as matérias disponíveis para suas provas
           </p>
         </div>
-        <Button onClick={openAddDialog}>
-          <Plus className="size-4" data-icon="inline-start" />
-          Nova Disciplina
-        </Button>
+        {!isCorretor && (
+          <Button onClick={openAddDialog}>
+            <Plus className="size-4" data-icon="inline-start" />
+            Nova Disciplina
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -182,10 +188,12 @@ export default function DisciplinasPage() {
           <p className="mt-4 text-sm text-muted-foreground">
             Nenhuma disciplina cadastrada.
           </p>
-          <Button onClick={openAddDialog} variant="outline" className="mt-4">
-            <Plus className="size-4" data-icon="inline-start" />
-            Adicionar disciplina
-          </Button>
+          {!isCorretor && (
+            <Button onClick={openAddDialog} variant="outline" className="mt-4">
+              <Plus className="size-4" data-icon="inline-start" />
+              Adicionar disciplina
+            </Button>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border">
@@ -193,36 +201,38 @@ export default function DisciplinasPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead className="w-[70px]">Ações</TableHead>
+                {!isCorretor && <TableHead className="w-[70px]">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {disciplinas.map((disciplina) => (
                 <TableRow key={disciplina.id}>
                   <TableCell className="font-medium">{disciplina.nome}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={<Button variant="ghost" size="icon-sm" />}
-                      >
-                        <MoreVertical className="size-4" />
-                        <span className="sr-only">Ações</span>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEditDialog(disciplina)}>
-                          <Pencil className="size-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => openDeleteDialog(disciplina)}
+                  {!isCorretor && (
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={<Button variant="ghost" size="icon-sm" />}
                         >
-                          <Trash2 className="size-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+                          <MoreVertical className="size-4" />
+                          <span className="sr-only">Ações</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(disciplina)}>
+                            <Pencil className="size-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => openDeleteDialog(disciplina)}
+                          >
+                            <Trash2 className="size-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

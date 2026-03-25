@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { ArrowLeft, Save, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { useWorkspace } from '@/contexts/workspace-context'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,6 +28,7 @@ export default function CorrecaoPage() {
   const params = useParams()
   const provaId = params.id as string
   const supabase = createClient()
+  const { workspaceId } = useWorkspace()
 
   const [prova, setProva] = useState<Prova | null>(null)
   const [alunos, setAlunos] = useState<Aluno[]>([])
@@ -263,6 +265,7 @@ export default function CorrecaoPage() {
       .filter(([, d]) => d.presenca === '*' || d.presenca === 'F')
       .map(([alunoIdStr, d]) => ({
         user_id: user.id,
+        workspace_id: workspaceId,
         prova_id: Number(provaId),
         aluno_id: Number(alunoIdStr),
         presenca: d.presenca,
