@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useEffect } from 'react'
+import { CRITERIOS_DISCURSIVA } from '@/types/database'
 
 interface CorrectionGridProps {
   gabarito: string[]
@@ -19,6 +20,22 @@ interface CorrectionGridProps {
   onTogglePresenca: (alunoId: number) => void
   onToggleQuestao: (alunoId: number, qIndex: number) => void
   modoVisualizacao?: boolean
+  tiposQuestoes?: string[]
+  criterioDiscursiva?: number
+}
+
+function getDiscursivaStyle(valor: number | undefined) {
+  if (valor === undefined) return 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+  if (valor >= 1.0) return 'bg-green-500 text-white border-green-600 hover:bg-green-600'
+  if (valor >= 0.75) return 'bg-emerald-400 text-white border-emerald-500 hover:bg-emerald-500'
+  if (valor >= 0.5) return 'bg-yellow-400 text-white border-yellow-500 hover:bg-yellow-500'
+  return 'bg-red-500 text-white border-red-600 hover:bg-red-600'
+}
+
+function getDiscursivaLabel(valor: number | undefined, criterio: number) {
+  const criterios = CRITERIOS_DISCURSIVA[criterio as 2 | 3 | 4]
+  const found = criterios?.find((c) => c.valor === valor)
+  return found?.label || '–'
 }
 
 export function CorrectionGrid({
@@ -29,6 +46,8 @@ export function CorrectionGrid({
   onTogglePresenca,
   onToggleQuestao,
   modoVisualizacao = false,
+  tiposQuestoes = [],
+  criterioDiscursiva = 3,
 }: CorrectionGridProps) {
   const gridRef = useRef<HTMLDivElement>(null)
 
@@ -140,25 +159,36 @@ export function CorrectionGrid({
             <th className="bg-indigo-50 px-1 py-2 text-center text-xs font-semibold text-indigo-600 whitespace-nowrap">
               P
             </th>
-            {gabarito.map((g, i) => (
-              <th
-                key={i}
-                className="bg-indigo-50 px-1 py-2 text-center text-xs font-semibold text-indigo-600 whitespace-nowrap"
-              >
-                <div>Q{i + 1}</div>
-                <div
-                  className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold ${
-                    g === 'X'
-                      ? 'bg-amber-400 text-white'
-                      : g
-                        ? 'bg-indigo-500 text-white'
-                        : 'bg-gray-200 text-gray-400'
-                  }`}
+            {gabarito.map((g, i) => {
+              const tipo = tiposQuestoes[i] || 'O'
+              const isDiscursiva = tipo === 'D'
+
+              return (
+                <th
+                  key={i}
+                  className="bg-indigo-50 px-1 py-2 text-center text-xs font-semibold text-indigo-600 whitespace-nowrap"
                 >
-                  {g || '?'}
-                </div>
-              </th>
-            ))}
+                  <div>Q{i + 1}</div>
+                  {isDiscursiva ? (
+                    <div className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold bg-blue-500 text-white">
+                      D
+                    </div>
+                  ) : (
+                    <div
+                      className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold ${
+                        g === 'X'
+                          ? 'bg-amber-400 text-white'
+                          : g
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-gray-200 text-gray-400'
+                      }`}
+                    >
+                      {g || '?'}
+                    </div>
+                  )}
+                </th>
+              )
+            })}
             <th className="bg-indigo-50 px-2 py-2 text-center text-xs font-semibold text-indigo-600 whitespace-nowrap">
               Total
             </th>
@@ -204,6 +234,35 @@ export function CorrectionGrid({
                 </td>
                 {Array.from({ length: numQuestoes }, (_, qIdx) => {
                   const val = d.questoes[`q${qIdx + 1}`]
+                  const tipo = tiposQuestoes[qIdx] || 'O'
+                  const isDiscursiva = tipo === 'D'
+
+                  if (isDiscursiva) {
+                    const style = getDiscursivaStyle(val)
+                    const label = getDiscursivaLabel(val, criterioDiscursiva)
+
+                    return (
+                      <td key={qIdx} className="px-1 py-1 text-center">
+                        <button
+                          data-row={rowIdx}
+                          data-col={qIdx + 1}
+                          disabled={modoVisualizacao || isFalta}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded border text-xs font-bold transition-colors ${
+                            isFalta
+                              ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-300'
+                              : `${style} ${modoVisualizacao ? 'cursor-default' : 'cursor-pointer'}`
+                          }`}
+                          onClick={() => onToggleQuestao(aluno.id, qIdx)}
+                          onFocus={() => {
+                            focusedCell.current = { row: rowIdx, col: qIdx + 1 }
+                          }}
+                        >
+                          {isFalta ? '-' : label}
+                        </button>
+                      </td>
+                    )
+                  }
+
                   const qDisplay = questaoDisplay(val)
 
                   return (

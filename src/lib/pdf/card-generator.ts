@@ -31,6 +31,9 @@ export interface CardGenParams {
   prova: CardGenProva
   alunos: CardGenAluno[]
   baseUrl: string // for QR code URL on cover page
+  tipoProva?: 'objetiva' | 'mista' | 'discursiva'
+  tiposQuestoes?: string   // "O,O,D,D,O,..."
+  criterioDiscursiva?: number  // 2, 3, 4
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -73,7 +76,8 @@ function desenharCapa(
   doc: jsPDF,
   prova: CardGenProva,
   totalAlunos: number,
-  baseUrl: string
+  baseUrl: string,
+  isMista: boolean = false
 ): void {
   const camUrl = `${baseUrl}/camera?p=${prova.id}`
 
@@ -124,11 +128,23 @@ function desenharCapa(
     { align: 'center' }
   )
 
+  // Badge prova mista
+  if (isMista) {
+    doc.setFillColor(219, 234, 254)
+    doc.setDrawColor(59, 130, 246)
+    doc.setLineWidth(0.3)
+    doc.roundedRect(30, 103, w - 60, 8, 2, 2, 'FD')
+    doc.setTextColor(30, 64, 175)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.text('PROVA MISTA - Contém questões objetivas e discursivas', cx, 108.5, { align: 'center' })
+  }
+
   // QR Code grande
   doc.setTextColor(67, 56, 202)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(13)
-  doc.text('Escaneie com o celular para iniciar:', cx, 115, { align: 'center' })
+  doc.text('Escaneie com o celular para iniciar:', cx, isMista ? 120 : 115, { align: 'center' })
 
   const qrSize = 60
   const qrX = cx - qrSize / 2
@@ -184,7 +200,9 @@ function desenharCartao(
   doc: jsPDF,
   yOff: number,
   prova: CardGenProva,
-  aluno: CardGenAluno
+  aluno: CardGenAluno,
+  tiposQuestoes?: string,
+  criterioDiscursiva?: number
 ): void {
   const C = CARTAO
   const nq = prova.numQuestoes
@@ -276,6 +294,16 @@ function desenharCartao(
   }
 
   // ── 5. Grade de bolhas ──
+  const tipos = tiposQuestoes?.split(',') || []
+  const criterio = criterioDiscursiva || 3
+
+  // Mapeamento de letras de critério por nível
+  const criterioLetras: Record<number, string[]> = {
+    2: ['C', 'E'],
+    3: ['C', 'P', 'E'],
+    4: ['E', 'B', 'P', 'I'],
+  }
+
   const splitAt = nq > 10 ? Math.ceil(nq / 2) : nq
   const numCols = nq > 10 ? 2 : 1
   const blocoW = C.numLargura + nalts * C.colunaLargura
@@ -318,30 +346,57 @@ function desenharCartao(
     for (let q = startQ; q < endQ; q++) {
       const row = q - startQ
       const rowY = baseY + row * C.linhaAltura
+      const isDiscursiva = tipos[q]?.trim() === 'D'
 
       // Número da questão
       const qNum = ('0' + (q + 1)).slice(-2)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7)
-      doc.setTextColor(140)
+      doc.setTextColor(isDiscursiva ? 59 : 140, isDiscursiva ? 130 : 140, isDiscursiva ? 246 : 140)
       doc.text(qNum, baseX + 3, rowY + C.linhaAltura / 2 + 1)
 
-      // Bolhas
-      for (let a = 0; a < nalts; a++) {
-        const bcx = baseX + C.numLargura + a * C.colunaLargura + C.colunaLargura / 2
-        const bcy = rowY + C.linhaAltura / 2
+      if (isDiscursiva) {
+        // Bolhas de critério discursivo (azuis, centralizadas)
+        const critLetras = criterioLetras[criterio] || criterioLetras[3]
+        const numBolhas = critLetras.length
+        const totalBolhasWidth = numBolhas * C.colunaLargura
+        const availableWidth = nalts * C.colunaLargura
+        const offsetX = (availableWidth - totalBolhasWidth) / 2
 
-        // Bolha: borda preta, fundo branco
-        doc.setDrawColor(0)
-        doc.setLineWidth(0.5)
-        doc.setFillColor(255, 255, 255)
-        doc.circle(bcx, bcy, C.bolhaRaio, 'FD')
+        for (let a = 0; a < numBolhas; a++) {
+          const bcx = baseX + C.numLargura + offsetX + a * C.colunaLargura + C.colunaLargura / 2
+          const bcy = rowY + C.linhaAltura / 2
 
-        // Letra guia dentro da bolha
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(5.5)
-        doc.setTextColor(210)
-        doc.text(letras[a], bcx - 1.2, bcy + 1)
+          // Bolha: borda azul, fundo branco
+          doc.setDrawColor(59, 130, 246)
+          doc.setLineWidth(0.5)
+          doc.setFillColor(255, 255, 255)
+          doc.circle(bcx, bcy, C.bolhaRaio, 'FD')
+
+          // Letra de critério dentro da bolha
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(5.5)
+          doc.setTextColor(147, 197, 253)
+          doc.text(critLetras[a], bcx - 1.2, bcy + 1)
+        }
+      } else {
+        // Bolhas objetivas normais (A/B/C/D/E)
+        for (let a = 0; a < nalts; a++) {
+          const bcx = baseX + C.numLargura + a * C.colunaLargura + C.colunaLargura / 2
+          const bcy = rowY + C.linhaAltura / 2
+
+          // Bolha: borda preta, fundo branco
+          doc.setDrawColor(0)
+          doc.setLineWidth(0.5)
+          doc.setFillColor(255, 255, 255)
+          doc.circle(bcx, bcy, C.bolhaRaio, 'FD')
+
+          // Letra guia dentro da bolha
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(5.5)
+          doc.setTextColor(210)
+          doc.text(letras[a], bcx - 1.2, bcy + 1)
+        }
       }
     }
 
@@ -352,6 +407,7 @@ function desenharCartao(
   }
 
   // ── 6. Instruções ──
+  const hasDiscursivas = tipos.some(t => t?.trim() === 'D')
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7)
   doc.setTextColor(60)
@@ -364,6 +420,16 @@ function desenharCartao(
     C.margem + 42,
     yOff + C.instrY
   )
+  if (hasDiscursivas) {
+    doc.setTextColor(59, 130, 246)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6)
+    doc.text(
+      'Questões com bolhas azuis são discursivas. Marque o critério de avaliação.',
+      C.margem + 5,
+      yOff + C.instrY + 4
+    )
+  }
 }
 
 // ── Cut Line ───────────────────────────────────────────────
@@ -386,9 +452,14 @@ function desenharLinhaCorte(doc: jsPDF): void {
  * Gera o PDF com cartões-resposta para todos os alunos.
  * Retorna o documento jsPDF (caller pode .save() ou .output()).
  */
-export function gerarCartoesPDF(params: CardGenParams): jsPDF {
-  const { prova, alunos, baseUrl } = params
+export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
+  const { prova, alunos, baseUrl, tipoProva, tiposQuestoes, criterioDiscursiva } = params
+
+  // Provas puramente discursivas não geram cartão-resposta
+  if (tipoProva === 'discursiva') return null
+
   const C = CARTAO
+  const isMista = tipoProva === 'mista'
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -398,7 +469,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF {
 
   // ── CAPA COM QR DE SESSÃO ──
   if (baseUrl) {
-    desenharCapa(doc, prova, alunos.length, baseUrl)
+    desenharCapa(doc, prova, alunos.length, baseUrl, isMista)
     doc.addPage()
   }
 
@@ -408,7 +479,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF {
     if (i > 0 && pos === 0) doc.addPage()
 
     const yOff = pos * C.altura
-    desenharCartao(doc, yOff, prova, alunos[i])
+    desenharCartao(doc, yOff, prova, alunos[i], tiposQuestoes, criterioDiscursiva)
 
     // Linha de corte entre os dois cartões
     if (pos === 0) {
@@ -428,7 +499,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF {
       nome: 'RESERVA',
       numero: 'R' + (r + 1),
     }
-    desenharCartao(doc, yOff, prova, reservaAluno)
+    desenharCartao(doc, yOff, prova, reservaAluno, tiposQuestoes, criterioDiscursiva)
     // Linha de corte
     if (pos === 0) {
       desenharLinhaCorte(doc)

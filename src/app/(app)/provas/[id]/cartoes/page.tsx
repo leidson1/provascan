@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Download, FileText, Loader2 } from 'lucide-react'
+import { ArrowLeft, ClipboardCheck, Download, FileText, Info, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -97,7 +97,15 @@ export default function CartoesPage() {
           numero: a.numero,
         })),
         baseUrl: window.location.origin,
+        tipoProva: prova.tipo_prova,
+        tiposQuestoes: prova.tipos_questoes || undefined,
+        criterioDiscursiva: prova.criterio_discursiva,
       })
+
+      if (!doc) {
+        toast.error('Esta prova não gera cartão-resposta.')
+        return
+      }
 
       // Download do PDF
       const blob = doc.output('blob')
@@ -137,6 +145,30 @@ export default function CartoesPage() {
           Voltar
         </Link>
         <p className="text-gray-500">Prova não encontrada.</p>
+      </div>
+    )
+  }
+
+  // Bloquear geração para provas puramente discursivas
+  if (prova.tipo_prova === 'discursiva') {
+    return (
+      <div className="space-y-4">
+        <Link href="/provas" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-2")}>
+          <ArrowLeft className="h-4 w-4" /> Voltar
+        </Link>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="mx-auto mb-3 h-10 w-10 text-blue-400" />
+            <h2 className="text-lg font-semibold text-gray-900">Prova Discursiva</h2>
+            <p className="mt-2 text-sm text-gray-500 max-w-md mx-auto">
+              Provas puramente discursivas não utilizam cartão-resposta.
+              A correção é feita diretamente no sistema.
+            </p>
+            <Link href={`/provas/${prova.id}/correcao`} className={cn(buttonVariants(), "mt-4 gap-2")}>
+              <ClipboardCheck className="h-4 w-4" /> Ir para Correção
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -206,6 +238,15 @@ export default function CartoesPage() {
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
               Esta prova ainda não tem gabarito cadastrado. Os cartões serão gerados,
               mas a correção automática só funcionará após o gabarito ser salvo.
+            </div>
+          )}
+
+          {prova.tipo_prova === 'mista' && (
+            <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Esta prova é mista. As questões discursivas terão bolhas de critério (azul) no cartão.
+              </span>
             </div>
           )}
 

@@ -45,6 +45,9 @@ interface ProvaRow {
   gabarito: string | null
   disciplina_id: number | null
   turma_id: number | null
+  tipo_prova: 'objetiva' | 'mista' | 'discursiva'
+  tipos_questoes: string | null
+  criterio_discursiva: number
   created_at: string
   disciplina: { nome: string } | null
   turma: { serie: string; turma: string } | null
@@ -121,6 +124,9 @@ export default function ProvasPage() {
   const [formBloco, setFormBloco] = useState('B1')
   const [formModoAvaliacao, setFormModoAvaliacao] = useState<'acertos' | 'nota'>('acertos')
   const [formNotaTotal, setFormNotaTotal] = useState(10)
+  const [formTipoProva, setFormTipoProva] = useState<'objetiva' | 'mista' | 'discursiva'>('objetiva')
+  const [formCriterioDiscursiva, setFormCriterioDiscursiva] = useState(3)
+  const [formTiposQuestoes, setFormTiposQuestoes] = useState<string[]>([])
 
   // Gabarito form
   const [formGabarito, setFormGabarito] = useState('')
@@ -128,6 +134,19 @@ export default function ProvasPage() {
   useEffect(() => {
     fetchAll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep formTiposQuestoes in sync with formNumQuestoes
+  useEffect(() => {
+    setFormTiposQuestoes((prev) => {
+      if (prev.length < formNumQuestoes) {
+        return [...prev, ...Array(formNumQuestoes - prev.length).fill('O')]
+      }
+      if (prev.length > formNumQuestoes) {
+        return prev.slice(0, formNumQuestoes)
+      }
+      return prev
+    })
+  }, [formNumQuestoes])
 
   async function fetchAll() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -172,6 +191,9 @@ export default function ProvasPage() {
     setFormBloco('B1')
     setFormModoAvaliacao('acertos')
     setFormNotaTotal(10)
+    setFormTipoProva('objetiva')
+    setFormCriterioDiscursiva(3)
+    setFormTiposQuestoes([])
     setProvaDialogOpen(true)
   }
 
@@ -186,6 +208,9 @@ export default function ProvasPage() {
     setFormBloco(prova.bloco)
     setFormModoAvaliacao(prova.modo_avaliacao)
     setFormNotaTotal(prova.nota_total || 10)
+    setFormTipoProva(prova.tipo_prova || 'objetiva')
+    setFormCriterioDiscursiva(prova.criterio_discursiva || 3)
+    setFormTiposQuestoes(prova.tipos_questoes ? prova.tipos_questoes.split(',') : [])
     setProvaDialogOpen(true)
   }
 
@@ -201,6 +226,12 @@ export default function ProvasPage() {
     if (!userId) return
     setSaving(true)
 
+    const tiposQuestoes = formTipoProva === 'objetiva'
+      ? Array(formNumQuestoes).fill('O').join(',')
+      : formTipoProva === 'discursiva'
+        ? Array(formNumQuestoes).fill('D').join(',')
+        : formTiposQuestoes.join(',')
+
     const payload = {
       user_id: userId,
       workspace_id: workspaceId,
@@ -212,6 +243,9 @@ export default function ProvasPage() {
       bloco: formBloco,
       modo_avaliacao: formModoAvaliacao,
       nota_total: formModoAvaliacao === 'nota' ? formNotaTotal : null,
+      tipo_prova: formTipoProva,
+      tipos_questoes: tiposQuestoes,
+      criterio_discursiva: formTipoProva !== 'objetiva' ? formCriterioDiscursiva : 3,
       status: 'aberta' as const,
     }
 
@@ -464,6 +498,7 @@ export default function ProvasPage() {
                 <Input id="m-nq" type="number" min={1} max={50} value={formNumQuestoes}
                   onChange={(e) => setFormNumQuestoes(Number(e.target.value))} />
               </div>
+              {formTipoProva !== 'discursiva' && (
               <div className="space-y-1.5">
                 <Label>Alternativas</Label>
                 <Select value={String(formNumAlternativas)} onValueChange={(v) => v && setFormNumAlternativas(Number(v))}>
@@ -474,6 +509,7 @@ export default function ProvasPage() {
                   </SelectContent>
                 </Select>
               </div>
+              )}
             </div>
 
             {/* Bloco + Modo */}
@@ -499,6 +535,67 @@ export default function ProvasPage() {
                 ? 'Contagem simples de respostas corretas'
                 : 'Nota calculada com base em pesos por questão'}
             </p>
+
+            {/* Tipo de Prova */}
+            <div className="space-y-1.5">
+              <Label>Tipo de Prova</Label>
+              <Select value={formTipoProva} onValueChange={(v) => v && setFormTipoProva(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="objetiva">Objetiva</SelectItem>
+                  <SelectItem value="mista">Mista (Objetiva + Discursiva)</SelectItem>
+                  <SelectItem value="discursiva">Discursiva</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Critério das Discursivas */}
+            {formTipoProva !== 'objetiva' && (
+              <div className="space-y-1.5">
+                <Label>Critério das Discursivas</Label>
+                <Select value={String(formCriterioDiscursiva)} onValueChange={(v) => v && setFormCriterioDiscursiva(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 níveis (Certo / Errado)</SelectItem>
+                    <SelectItem value="3">3 níveis (Certo / Parcial / Errado)</SelectItem>
+                    <SelectItem value="4">4 níveis (Excelente / Bom / Parcial / Insuficiente)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Seletor de tipo por questão (mista) */}
+            {formTipoProva === 'mista' && formNumQuestoes > 0 && (
+              <div className="space-y-2">
+                <Label>Marque as questões discursivas</Label>
+                <p className="text-xs text-muted-foreground">Clique para alternar entre Objetiva (O) e Discursiva (D)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: formNumQuestoes }).map((_, i) => {
+                    const tipo = formTiposQuestoes[i] || 'O'
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          const newTipos = [...formTiposQuestoes]
+                          while (newTipos.length <= i) newTipos.push('O')
+                          newTipos[i] = newTipos[i] === 'D' ? 'O' : 'D'
+                          setFormTiposQuestoes(newTipos)
+                        }}
+                        className={`w-10 h-10 rounded-lg text-xs font-bold border-2 transition-colors ${
+                          tipo === 'D'
+                            ? 'bg-blue-500 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="text-[10px] text-opacity-70">{i + 1}</div>
+                        <div>{tipo}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Nota Total */}
             {formModoAvaliacao === 'nota' && (
@@ -542,6 +639,8 @@ export default function ProvasPage() {
                 numAlternativas={gabaritoProva.num_alternativas}
                 value={formGabarito}
                 onChange={setFormGabarito}
+                tiposQuestoes={gabaritoProva.tipos_questoes || undefined}
+                criterioDiscursiva={gabaritoProva.criterio_discursiva}
               />
             </div>
           )}

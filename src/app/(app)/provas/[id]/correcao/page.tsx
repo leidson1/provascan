@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CorrectionGrid } from '@/components/correction-grid'
 import type { Prova, Aluno, Resultado } from '@/types/database'
+import { CRITERIOS_DISCURSIVA } from '@/types/database'
 
 type DadosAluno = {
   presenca: string
@@ -40,6 +41,10 @@ export default function CorrecaoPage() {
     ? prova.gabarito.split(',')
     : Array(prova?.num_questoes ?? 0).fill('')
 
+  const tiposQuestoesArr = prova?.tipos_questoes
+    ? prova.tipos_questoes.split(',')
+    : []
+
   // Calculate acertos for a student
   const calcularAcertos = useCallback(
     (questoes: Record<string, number>, gabaritoArr: string[]) => {
@@ -49,11 +54,12 @@ export default function CorrecaoPage() {
         if (gabaritoArr[i] === 'X') {
           // Anulled question = automatic correct
           acertos++
-        } else if (questoes[key] === 1) {
-          acertos++
+        } else if (questoes[key] !== undefined) {
+          // Sum the value directly (1 for objective correct, fractional for discursive)
+          acertos += questoes[key]
         }
       }
-      return acertos
+      return Math.round(acertos * 100) / 100
     },
     []
   )
@@ -76,8 +82,10 @@ export default function CorrecaoPage() {
         for (let i = 0; i < numQuestoes; i++) {
           const key = `q${i + 1}`
           const peso = pesos[i] ?? 1
-          if (gabArr[i] === 'X' || questoes[key] === 1) {
+          if (gabArr[i] === 'X') {
             nota += peso
+          } else if (questoes[key] !== undefined) {
+            nota += questoes[key] * peso
           }
         }
         return Math.round(nota * 100) / 100
@@ -227,13 +235,27 @@ export default function CorrecaoPage() {
       }
       if (current.presenca === 'F') return prev
 
+      const tipo = tiposQuestoesArr[qIndex] || 'O'
       const key = `q${qIndex + 1}`
       const val = current.questoes[key]
       let nextVal: number | undefined
-      // Cycle: undefined -> 1 -> 0 -> undefined
-      if (val === undefined) nextVal = 1
-      else if (val === 1) nextVal = 0
-      else nextVal = undefined
+
+      if (tipo === 'O') {
+        // Binary: undefined -> 1 -> 0 -> undefined
+        if (val === undefined) nextVal = 1
+        else if (val === 1) nextVal = 0
+        else nextVal = undefined
+      } else {
+        // Discursive: cycle through criterion values
+        const criterios = CRITERIOS_DISCURSIVA[(prova?.criterio_discursiva ?? 3) as 2 | 3 | 4] || CRITERIOS_DISCURSIVA[3]
+        const valores: number[] = criterios.map((c) => c.valor as number)
+        if (val === undefined) {
+          nextVal = valores[0] // first (highest)
+        } else {
+          const idx = valores.indexOf(val)
+          nextVal = idx < valores.length - 1 ? valores[idx + 1] : undefined
+        }
+      }
 
       const newQuestoes = { ...current.questoes }
       if (nextVal === undefined) {
@@ -422,6 +444,8 @@ export default function CorrecaoPage() {
               dados={dados}
               onTogglePresenca={handleTogglePresenca}
               onToggleQuestao={handleToggleQuestao}
+              tiposQuestoes={tiposQuestoesArr}
+              criterioDiscursiva={prova.criterio_discursiva}
             />
           )}
         </CardContent>

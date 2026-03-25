@@ -7,6 +7,8 @@ interface AnswerKeyEditorProps {
   numAlternativas: number
   value: string
   onChange: (value: string) => void
+  tiposQuestoes?: string     // "O,O,D,D,O,..."
+  criterioDiscursiva?: number // 2, 3, 4
 }
 
 const ALTERNATIVAS = ['A', 'B', 'C', 'D', 'E']
@@ -16,12 +18,31 @@ export function AnswerKeyEditor({
   numAlternativas,
   value,
   onChange,
+  tiposQuestoes,
+  criterioDiscursiva,
 }: AnswerKeyEditorProps) {
   const answers = value ? value.split(',') : Array(numQuestoes).fill('')
 
   // Ensure answers array matches numQuestoes
   while (answers.length < numQuestoes) answers.push('')
   if (answers.length > numQuestoes) answers.length = numQuestoes
+
+  // Parse tipos_questoes
+  const tipos = tiposQuestoes ? tiposQuestoes.split(',') : []
+
+  // Auto-set discursive questions to "D"
+  let needsUpdate = false
+  for (let i = 0; i < numQuestoes; i++) {
+    const tipo = tipos[i] || 'O'
+    if (tipo === 'D' && answers[i] !== 'D') {
+      answers[i] = 'D'
+      needsUpdate = true
+    }
+  }
+  if (needsUpdate) {
+    // Schedule update for next tick to avoid state update during render
+    setTimeout(() => onChange(answers.join(',')), 0)
+  }
 
   const filledCount = answers.filter((a) => a !== '').length
   const alternatives = ALTERNATIVAS.slice(0, numAlternativas)
@@ -54,53 +75,70 @@ export function AnswerKeyEditor({
             <span className="inline-block h-3 w-3 rounded bg-amber-500" />
             Anulada
           </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded bg-blue-500" />
+            Discursiva
+          </span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-        {answers.map((answer, idx) => (
-          <div
-            key={idx}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2"
-          >
-            <span className="w-8 shrink-0 text-sm font-semibold text-gray-600">
-              Q{idx + 1}
-            </span>
+        {answers.map((answer, idx) => {
+          const tipo = tipos[idx] || 'O'
+          const isDiscursiva = tipo === 'D'
 
-            <div className="flex flex-1 items-center gap-1">
-              {alternatives.map((letter) => (
-                <Button
-                  key={letter}
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className={`h-8 w-8 p-0 text-xs font-semibold ${
-                    answer === letter
-                      ? 'bg-indigo-500 text-white hover:bg-indigo-600 hover:text-white'
-                      : 'bg-slate-100 text-gray-700 hover:bg-slate-200'
-                  }`}
-                  onClick={() => handleSelect(idx, letter)}
-                >
-                  {letter}
-                </Button>
-              ))}
+          return (
+            <div
+              key={idx}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2"
+            >
+              <span className="w-8 shrink-0 text-sm font-semibold text-gray-600">
+                Q{idx + 1}
+              </span>
 
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={`ml-1 h-8 w-8 p-0 text-xs font-semibold ${
-                  answer === 'X'
-                    ? 'bg-amber-500 text-white hover:bg-amber-600 hover:text-white'
-                    : 'bg-slate-100 text-gray-700 hover:bg-slate-200'
-                }`}
-                onClick={() => handleAnular(idx)}
-              >
-                X
-              </Button>
+              <div className="flex flex-1 items-center gap-1">
+                {isDiscursiva ? (
+                  <span className="inline-flex h-8 items-center rounded-md bg-blue-500 px-3 text-xs font-semibold text-white">
+                    Discursiva
+                  </span>
+                ) : (
+                  <>
+                    {alternatives.map((letter) => (
+                      <Button
+                        key={letter}
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className={`h-8 w-8 p-0 text-xs font-semibold ${
+                          answer === letter
+                            ? 'bg-indigo-500 text-white hover:bg-indigo-600 hover:text-white'
+                            : 'bg-slate-100 text-gray-700 hover:bg-slate-200'
+                        }`}
+                        onClick={() => handleSelect(idx, letter)}
+                      >
+                        {letter}
+                      </Button>
+                    ))}
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className={`ml-1 h-8 w-8 p-0 text-xs font-semibold ${
+                        answer === 'X'
+                          ? 'bg-amber-500 text-white hover:bg-amber-600 hover:text-white'
+                          : 'bg-slate-100 text-gray-700 hover:bg-slate-200'
+                      }`}
+                      onClick={() => handleAnular(idx)}
+                    >
+                      X
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

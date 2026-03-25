@@ -74,11 +74,35 @@ export interface Prova {
   nota_total: number | null
   pesos_questoes: string | null
   prazo_correcao: string | null
+  tipo_prova: 'objetiva' | 'mista' | 'discursiva'
+  tipos_questoes: string | null
+  criterio_discursiva: number
   created_at: string
   // Joined fields
   disciplina?: Disciplina
   turma?: Turma
 }
+
+export type TipoQuestao = 'O' | 'D'
+
+// Critérios de avaliação para questões discursivas
+export const CRITERIOS_DISCURSIVA = {
+  2: [
+    { label: 'C', nome: 'Certo', valor: 1.0, cor: 'green' },
+    { label: 'E', nome: 'Errado', valor: 0, cor: 'red' },
+  ],
+  3: [
+    { label: 'C', nome: 'Certo', valor: 1.0, cor: 'green' },
+    { label: 'P', nome: 'Parcial', valor: 0.5, cor: 'yellow' },
+    { label: 'E', nome: 'Errado', valor: 0, cor: 'red' },
+  ],
+  4: [
+    { label: 'E', nome: 'Excelente', valor: 1.0, cor: 'green' },
+    { label: 'B', nome: 'Bom', valor: 0.75, cor: 'emerald' },
+    { label: 'P', nome: 'Parcial', valor: 0.5, cor: 'yellow' },
+    { label: 'I', nome: 'Insuficiente', valor: 0, cor: 'red' },
+  ],
+} as const
 
 export interface Resultado {
   id: number
