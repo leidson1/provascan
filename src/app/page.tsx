@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ScanLine, Camera, FileText, BarChart3, CheckCircle, Smartphone, Shield, GraduationCap, Clock, Users } from 'lucide-react'
+import { ScanLine, Camera, FileText, BarChart3, CheckCircle, Smartphone, Shield, GraduationCap, Clock, Users, Mail } from 'lucide-react'
 
 export default function LandingPage() {
   return (
@@ -37,8 +37,9 @@ export default function LandingPage() {
             <span className="text-indigo-500">pela câmera do celular</span>
           </h1>
           <p className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto mb-10">
-            O ProvaScan é uma plataforma gratuita que permite ao professor imprimir
-            cartões-resposta, fotografar com o celular e obter as notas automaticamente.
+            Reduza o tempo de correção das suas provas usando apenas o celular.
+            Cadastre o gabarito, imprima os cartões-resposta e fotografe — as notas
+            saem na hora, de forma automática.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/signup" className="w-full sm:w-auto text-center text-lg font-semibold text-white bg-indigo-500 hover:bg-indigo-600 px-8 py-4 rounded-xl transition-colors shadow-lg shadow-indigo-500/25">
@@ -58,11 +59,12 @@ export default function LandingPage() {
             O que é o ProvaScan?
           </h2>
           <p className="text-lg text-slate-600 leading-relaxed">
-            O ProvaScan é um sistema de correção óptica de provas objetivas desenvolvido
-            para facilitar o dia a dia do professor. Com ele, você cria provas, imprime
-            cartões-resposta com QR Code, e utiliza a câmera do próprio celular para ler
-            e corrigir as respostas dos alunos de forma automática. Os resultados ficam
-            organizados com estatísticas detalhadas por questão, turma e aluno.
+            O ProvaScan é uma iniciativa gratuita criada para ajudar o professor a reduzir
+            drasticamente o tempo gasto com correção de provas. Você cadastra o gabarito da
+            sua prova, imprime os cartões-resposta com QR Code e usa a câmera do próprio
+            celular para corrigir as respostas dos alunos em segundos. Os resultados ficam
+            organizados com estatísticas detalhadas por questão, turma e aluno. Pode ser
+            utilizado no Ensino Fundamental, Médio e Superior.
           </p>
         </div>
       </section>
@@ -80,8 +82,8 @@ export default function LandingPage() {
             <StepCard
               step="1"
               icon={<FileText className="w-7 h-7" />}
-              title="Crie a prova e imprima"
-              description="Cadastre as questões, defina o gabarito e imprima os cartões-resposta personalizados com QR Code."
+              title="Cadastre o gabarito e imprima"
+              description="Cadastre o gabarito da sua prova, defina as respostas corretas e imprima os cartões-resposta personalizados com QR Code."
             />
             <StepCard
               step="2"
@@ -191,11 +193,12 @@ export default function LandingPage() {
       <section className="py-20 bg-gradient-to-br from-indigo-600 to-violet-700">
         <div className="max-w-3xl mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Simplifique suas correções hoje mesmo
+            Economize tempo nas suas correções
           </h2>
           <p className="text-lg text-indigo-100 mb-8">
-            Cadastre-se gratuitamente e comece a usar o ProvaScan em poucos minutos.
-            Sem cartão de crédito, sem período de teste. Gratuito para sempre.
+            O ProvaScan é uma iniciativa gratuita para ajudar professores do Ensino
+            Fundamental, Médio e Superior. Sem cartão de crédito, sem período de teste.
+            Gratuito para sempre.
           </p>
           <Link href="/signup" className="inline-block text-lg font-semibold text-indigo-600 bg-white hover:bg-indigo-50 px-8 py-4 rounded-xl transition-colors shadow-lg">
             Criar Conta Gratuita
@@ -214,6 +217,10 @@ export default function LandingPage() {
               <span className="font-medium text-slate-300">ProvaScan</span>
             </div>
             <div className="flex items-center gap-6">
+              <a href="mailto:aximeatech@gmail.com" className="flex items-center gap-1.5 hover:text-white transition-colors">
+                <Mail className="w-4 h-4" />
+                aximeatech@gmail.com
+              </a>
               <Link href="/termos" className="hover:text-white transition-colors">Termos de Uso</Link>
               <a href="https://github.com/leidson1/provascan" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
             </div>
