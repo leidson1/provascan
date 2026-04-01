@@ -70,27 +70,27 @@ function computeScore(
   return { acertos, percentual: total > 0 ? Math.round((acertos / total) * 100) : 0 }
 }
 
-function resizeImage(file: File, maxSize: number): Promise<HTMLCanvasElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      let { width, height } = img
-      if (width > maxSize || height > maxSize) {
-        const ratio = Math.min(maxSize / width, maxSize / height)
-        width = Math.round(width * ratio)
-        height = Math.round(height * ratio)
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, 0, width, height)
-      URL.revokeObjectURL(img.src)
-      resolve(canvas)
-    }
-    img.onerror = () => reject(new Error('Erro ao carregar imagem'))
-    img.src = URL.createObjectURL(file)
+async function resizeImage(file: File, maxSize: number): Promise<HTMLCanvasElement> {
+  // Usar createImageBitmap com imageOrientation para respeitar EXIF
+  // Isso corrige fotos tiradas em paisagem que chegam rotacionadas
+  const bitmap = await createImageBitmap(file, {
+    imageOrientation: 'from-image',
   })
+
+  let { width, height } = bitmap
+  if (width > maxSize || height > maxSize) {
+    const ratio = Math.min(maxSize / width, maxSize / height)
+    width = Math.round(width * ratio)
+    height = Math.round(height * ratio)
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(bitmap, 0, 0, width, height)
+  bitmap.close()
+  return canvas
 }
 
 // ── Wrapper with Suspense ────────────────────────────────────────

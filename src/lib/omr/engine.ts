@@ -206,7 +206,8 @@ export class OMREngine {
         }
       }
 
-      // Corrigir orientação se necessário
+      // Corrigir orientação: o cartão é paisagem (largura > altura)
+      // Se os marcadores indicam retrato, rotacionar
       const wTop = Math.hypot(
         marcadores.tr.x - marcadores.tl.x,
         marcadores.tr.y - marcadores.tl.y
@@ -216,8 +217,60 @@ export class OMREngine {
         marcadores.bl.y - marcadores.tl.y
       )
       if (hLeft > wTop * 1.15) {
+        // Imagem está em retrato mas cartão é paisagem → rotacionar 90°
         const tmp = marcadores
         marcadores = { tl: tmp.bl, tr: tmp.tl, bl: tmp.br, br: tmp.tr }
+      }
+
+      // Verificar se está de cabeça para baixo (180°)
+      // O QR Code fica no canto superior esquerdo do cartão
+      // Após perspectiva, a região do QR deve ter mais conteúdo escuro
+      // Heurística: comparar densidade no quadrante TL vs BR
+      try {
+        const testWarped = this._corrigirPerspectiva(src, marcadores)
+        const testGray = new cv.Mat()
+        cv.cvtColor(testWarped, testGray, cv.COLOR_RGBA2GRAY)
+        const testBin = new cv.Mat()
+        cv.threshold(testGray, testBin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+
+        const px = OMREngine.PX_MM
+        const qrRegion = { x: Math.round(10 * px), y: Math.round(20 * px), w: Math.round(26 * px), h: Math.round(26 * px) }
+
+        // Região do QR (TL)
+        const rx = Math.max(0, qrRegion.x)
+        const ry = Math.max(0, qrRegion.y)
+        const rw = Math.min(qrRegion.w, testBin.cols - rx)
+        const rh = Math.min(qrRegion.h, testBin.rows - ry)
+
+        if (rw > 0 && rh > 0) {
+          const roiTL = testBin.roi(new cv.Rect(rx, ry, rw, rh))
+          const densidadeTL = cv.countNonZero(roiTL) / (rw * rh)
+          roiTL.delete()
+
+          // Região espelho (BR)
+          const brx = Math.max(0, testBin.cols - rx - rw)
+          const bry = Math.max(0, testBin.rows - ry - rh)
+          const brw = Math.min(rw, testBin.cols - brx)
+          const brh = Math.min(rh, testBin.rows - bry)
+
+          if (brw > 0 && brh > 0) {
+            const roiBR = testBin.roi(new cv.Rect(brx, bry, brw, brh))
+            const densidadeBR = cv.countNonZero(roiBR) / (brw * brh)
+            roiBR.delete()
+
+            // Se o QR está no canto oposto (BR muito mais denso que TL), está de cabeça para baixo
+            if (densidadeBR > densidadeTL * 1.5 && densidadeBR > 0.15) {
+              const tmp = marcadores
+              marcadores = { tl: tmp.br, tr: tmp.bl, bl: tmp.tr, br: tmp.tl }
+            }
+          }
+        }
+
+        testBin.delete()
+        testGray.delete()
+        testWarped.delete()
+      } catch {
+        // Falha na detecção de 180°, continua sem corrigir
       }
 
       warped = this._corrigirPerspectiva(src, marcadores)
