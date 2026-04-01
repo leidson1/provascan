@@ -36,7 +36,6 @@ export interface CardGenParams {
   criterioDiscursiva?: number  // 2, 3, 4
   pesosQuestoes?: string   // "1,1,2,1,3,..."
   nomeInstituicao?: string // nome da escola/instituição
-  logoBase64?: string      // logo em base64 (data:image/...)
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -81,8 +80,7 @@ function desenharCapa(
   totalAlunos: number,
   baseUrl: string,
   isMista: boolean = false,
-  nomeInstituicao?: string,
-  logoBase64?: string
+  nomeInstituicao?: string
 ): void {
   const camUrl = `${baseUrl}/camera?p=${prova.id}`
 
@@ -101,19 +99,8 @@ function desenharCapa(
   doc.setLineWidth(0.5)
   doc.rect(13, 13, w - 26, h - 26, 'S')
 
-  // Logo (se disponível)
-  let tituloY = 40
-  if (logoBase64) {
-    try {
-      const logoSize = 20
-      doc.addImage(logoBase64, 'PNG', cx - logoSize / 2, 22, logoSize, logoSize)
-      tituloY = 48
-    } catch {
-      // Logo inválida, ignora
-    }
-  }
-
   // Título: nome da instituição ou PROVASCAN
+  const tituloY = 40
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(67, 56, 202)
   if (nomeInstituicao) {
@@ -516,7 +503,7 @@ function desenharLinhaCorte(doc: jsPDF): void {
  * Retorna o documento jsPDF (caller pode .save() ou .output()).
  */
 export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
-  const { prova, alunos, baseUrl, tipoProva, criterioDiscursiva, pesosQuestoes, nomeInstituicao, logoBase64 } = params
+  const { prova, alunos, baseUrl, tipoProva, criterioDiscursiva, pesosQuestoes, nomeInstituicao } = params
   let tiposQuestoes = params.tiposQuestoes
 
   // Discursiva pura agora gera cartão com bolhas de critério
@@ -536,7 +523,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
 
   // ── CAPA COM QR DE SESSÃO ──
   if (baseUrl) {
-    desenharCapa(doc, prova, alunos.length, baseUrl, isMista, nomeInstituicao, logoBase64)
+    desenharCapa(doc, prova, alunos.length, baseUrl, isMista, nomeInstituicao)
     doc.addPage()
   }
 

@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, ClipboardCheck, Download, FileText, Info, Loader2 } from 'lucide-react'
@@ -30,26 +30,6 @@ export default function CartoesPage() {
   const [alunos, setAlunos] = useState<Aluno[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
-  const logoBase64Ref = useRef<string | null>(null)
-
-  // Carregar logo como base64 (se existir)
-  useEffect(() => {
-    async function loadLogo() {
-      if (!workspace.logo_url) return
-      try {
-        const response = await fetch(workspace.logo_url)
-        const blob = await response.blob()
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          logoBase64Ref.current = reader.result as string
-        }
-        reader.readAsDataURL(blob)
-      } catch {
-        // Logo não carregou, ignora
-      }
-    }
-    loadLogo()
-  }, [workspace.logo_url])
 
   useEffect(() => {
     async function fetchData() {
@@ -124,7 +104,6 @@ export default function CartoesPage() {
         criterioDiscursiva: prova.criterio_discursiva,
         pesosQuestoes: prova.pesos_questoes || undefined,
         nomeInstituicao: workspace.nome_instituicao || undefined,
-        logoBase64: logoBase64Ref.current || undefined,
       })
 
       if (!doc) {
