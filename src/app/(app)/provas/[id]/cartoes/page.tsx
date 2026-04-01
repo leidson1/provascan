@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, ClipboardCheck, Download, FileText, Info, Loader2 } from 'lucide-react'
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { gerarCartoesPDF } from '@/lib/pdf/card-generator'
 import type { Prova, Aluno } from '@/types/database'
+import { useWorkspace } from '@/contexts/workspace-context'
 
 type ProvaWithJoins = Omit<Prova, 'disciplina' | 'turma'> & {
   disciplina?: { nome: string }
@@ -23,11 +24,32 @@ export default function CartoesPage() {
   const params = useParams()
   const provaId = params.id as string
   const supabase = createClient()
+  const { workspace } = useWorkspace()
 
   const [prova, setProva] = useState<ProvaWithJoins | null>(null)
   const [alunos, setAlunos] = useState<Aluno[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const logoBase64Ref = useRef<string | null>(null)
+
+  // Carregar logo como base64 (se existir)
+  useEffect(() => {
+    async function loadLogo() {
+      if (!workspace.logo_url) return
+      try {
+        const response = await fetch(workspace.logo_url)
+        const blob = await response.blob()
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          logoBase64Ref.current = reader.result as string
+        }
+        reader.readAsDataURL(blob)
+      } catch {
+        // Logo não carregou, ignora
+      }
+    }
+    loadLogo()
+  }, [workspace.logo_url])
 
   useEffect(() => {
     async function fetchData() {
@@ -101,6 +123,8 @@ export default function CartoesPage() {
         tiposQuestoes: prova.tipos_questoes || undefined,
         criterioDiscursiva: prova.criterio_discursiva,
         pesosQuestoes: prova.pesos_questoes || undefined,
+        nomeInstituicao: workspace.nome_instituicao || undefined,
+        logoBase64: logoBase64Ref.current || undefined,
       })
 
       if (!doc) {

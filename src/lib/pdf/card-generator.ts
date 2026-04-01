@@ -35,6 +35,8 @@ export interface CardGenParams {
   tiposQuestoes?: string   // "O,O,D,D,O,..."
   criterioDiscursiva?: number  // 2, 3, 4
   pesosQuestoes?: string   // "1,1,2,1,3,..."
+  nomeInstituicao?: string // nome da escola/instituição
+  logoBase64?: string      // logo em base64 (data:image/...)
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -78,7 +80,9 @@ function desenharCapa(
   prova: CardGenProva,
   totalAlunos: number,
   baseUrl: string,
-  isMista: boolean = false
+  isMista: boolean = false,
+  nomeInstituicao?: string,
+  logoBase64?: string
 ): void {
   const camUrl = `${baseUrl}/camera?p=${prova.id}`
 
@@ -97,16 +101,36 @@ function desenharCapa(
   doc.setLineWidth(0.5)
   doc.rect(13, 13, w - 26, h - 26, 'S')
 
-  // Título
+  // Logo (se disponível)
+  let tituloY = 40
+  if (logoBase64) {
+    try {
+      const logoSize = 20
+      doc.addImage(logoBase64, 'PNG', cx - logoSize / 2, 22, logoSize, logoSize)
+      tituloY = 48
+    } catch {
+      // Logo inválida, ignora
+    }
+  }
+
+  // Título: nome da instituição ou PROVASCAN
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(67, 56, 202)
-  doc.setFontSize(22)
-  doc.text('PROVASCAN', cx, 40, { align: 'center' })
-
-  doc.setFontSize(12)
-  doc.setTextColor(100)
-  doc.setFont('helvetica', 'normal')
-  doc.text('ProvaScan Camera', cx, 50, { align: 'center' })
+  if (nomeInstituicao) {
+    doc.setFontSize(18)
+    doc.text(nomeInstituicao.toUpperCase(), cx, tituloY, { align: 'center' })
+    doc.setFontSize(10)
+    doc.setTextColor(100)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Cartões de Resposta — ProvaScan', cx, tituloY + 8, { align: 'center' })
+  } else {
+    doc.setFontSize(22)
+    doc.text('PROVASCAN', cx, tituloY, { align: 'center' })
+    doc.setFontSize(12)
+    doc.setTextColor(100)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Cartões de Resposta', cx, tituloY + 10, { align: 'center' })
+  }
 
   // Info da prova
   doc.setFillColor(245, 245, 250)
@@ -204,7 +228,8 @@ function desenharCartao(
   aluno: CardGenAluno,
   tiposQuestoes?: string,
   criterioDiscursiva?: number,
-  pesosQuestoes?: string
+  pesosQuestoes?: string,
+  nomeInstituicao?: string
 ): void {
   const C = CARTAO
   const nq = prova.numQuestoes
@@ -247,8 +272,8 @@ function desenharCartao(
   // ── 3. Título e info da prova ──
   doc.setTextColor(50)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.text('PROVASCAN', C.tituloX, yOff + C.tituloY + 2)
+  doc.setFontSize(nomeInstituicao ? 9 : 11)
+  doc.text((nomeInstituicao || 'PROVASCAN').toUpperCase(), C.tituloX, yOff + C.tituloY + 2)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
@@ -491,7 +516,7 @@ function desenharLinhaCorte(doc: jsPDF): void {
  * Retorna o documento jsPDF (caller pode .save() ou .output()).
  */
 export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
-  const { prova, alunos, baseUrl, tipoProva, criterioDiscursiva, pesosQuestoes } = params
+  const { prova, alunos, baseUrl, tipoProva, criterioDiscursiva, pesosQuestoes, nomeInstituicao, logoBase64 } = params
   let tiposQuestoes = params.tiposQuestoes
 
   // Discursiva pura agora gera cartão com bolhas de critério
@@ -511,7 +536,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
 
   // ── CAPA COM QR DE SESSÃO ──
   if (baseUrl) {
-    desenharCapa(doc, prova, alunos.length, baseUrl, isMista)
+    desenharCapa(doc, prova, alunos.length, baseUrl, isMista, nomeInstituicao, logoBase64)
     doc.addPage()
   }
 
@@ -521,7 +546,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
     if (i > 0 && pos === 0) doc.addPage()
 
     const yOff = pos * C.altura
-    desenharCartao(doc, yOff, prova, alunos[i], tiposQuestoes, criterioDiscursiva, pesosQuestoes)
+    desenharCartao(doc, yOff, prova, alunos[i], tiposQuestoes, criterioDiscursiva, pesosQuestoes, nomeInstituicao)
 
     // Linha de corte entre os dois cartões
     if (pos === 0) {
@@ -541,7 +566,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
       nome: 'RESERVA',
       numero: 'R' + (r + 1),
     }
-    desenharCartao(doc, yOff, prova, reservaAluno, tiposQuestoes, criterioDiscursiva, pesosQuestoes)
+    desenharCartao(doc, yOff, prova, reservaAluno, tiposQuestoes, criterioDiscursiva, pesosQuestoes, nomeInstituicao)
     // Linha de corte
     if (pos === 0) {
       desenharLinhaCorte(doc)
