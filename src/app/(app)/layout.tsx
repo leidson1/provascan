@@ -7,6 +7,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sidebar } from '@/components/sidebar'
 import { Header } from '@/components/header'
+import { TutorialModal } from '@/components/tutorial-modal'
 import { WorkspaceProvider } from '@/contexts/workspace-context'
 import type { Profile } from '@/types/database'
 
@@ -93,6 +94,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <WorkspaceProvider userId={authUserId}>
+      <TutorialModal />
       <div className="flex h-screen bg-gray-50">
         <Sidebar user={user} currentPath={pathname} />
 
