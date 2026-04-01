@@ -396,8 +396,10 @@ function desenharCartao(
           const letraW = doc.getTextWidth(critLetras[a])
           doc.text(critLetras[a], bcx - letraW / 2, bcy + 1)
 
-          // Valor do critério abaixo da bolha
-          const valorStr = critValores[a] % 1 === 0 ? critValores[a].toFixed(0) : critValores[a].toFixed(1)
+          // Valor real abaixo da bolha (valor do critério × peso da questão)
+          const pesoQ = pesos[q] || 1
+          const valorReal = critValores[a] * pesoQ
+          const valorStr = valorReal % 1 === 0 ? valorReal.toFixed(0) : valorReal.toFixed(1)
           doc.setFontSize(4)
           doc.setTextColor(147, 197, 253)
           const valorW = doc.getTextWidth(valorStr)
