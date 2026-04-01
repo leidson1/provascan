@@ -300,11 +300,16 @@ function desenharCartao(
   const criterio = criterioDiscursiva || 3
   const pesos = pesosQuestoes ? pesosQuestoes.split(',').map(Number) : []
 
-  // Mapeamento de letras de critério por nível
+  // Mapeamento de letras e valores de critério por nível
   const criterioLetras: Record<number, string[]> = {
     2: ['C', 'E'],
     3: ['C', 'P', 'E'],
     4: ['E', 'B', 'P', 'I'],
+  }
+  const criterioValores: Record<number, number[]> = {
+    2: [1.0, 0],
+    3: [1.0, 0.5, 0],
+    4: [1.0, 0.75, 0.5, 0],
   }
 
   const splitAt = nq > 10 ? Math.ceil(nq / 2) : nq
@@ -368,6 +373,7 @@ function desenharCartao(
       if (isDiscursiva) {
         // Bolhas de critério discursivo (azuis, centralizadas)
         const critLetras = criterioLetras[criterio] || criterioLetras[3]
+        const critValores = criterioValores[criterio] || criterioValores[3]
         const numBolhas = critLetras.length
         const totalBolhasWidth = numBolhas * C.colunaLargura
         const availableWidth = nalts * C.colunaLargura
@@ -383,11 +389,19 @@ function desenharCartao(
           doc.setFillColor(255, 255, 255)
           doc.circle(bcx, bcy, C.bolhaRaio, 'FD')
 
-          // Letra de critério dentro da bolha
+          // Letra de critério dentro da bolha (centralizada)
           doc.setFont('helvetica', 'normal')
           doc.setFontSize(5.5)
           doc.setTextColor(147, 197, 253)
-          doc.text(critLetras[a], bcx - 1.2, bcy + 1)
+          const letraW = doc.getTextWidth(critLetras[a])
+          doc.text(critLetras[a], bcx - letraW / 2, bcy + 1)
+
+          // Valor do critério abaixo da bolha
+          const valorStr = critValores[a] % 1 === 0 ? critValores[a].toFixed(0) : critValores[a].toFixed(1)
+          doc.setFontSize(4)
+          doc.setTextColor(147, 197, 253)
+          const valorW = doc.getTextWidth(valorStr)
+          doc.text(valorStr, bcx - valorW / 2, bcy + C.bolhaRaio + 2.5)
         }
       } else {
         // Bolhas objetivas normais (A/B/C/D/E)
@@ -401,11 +415,12 @@ function desenharCartao(
           doc.setFillColor(255, 255, 255)
           doc.circle(bcx, bcy, C.bolhaRaio, 'FD')
 
-          // Letra guia dentro da bolha
+          // Letra guia dentro da bolha (centralizada)
           doc.setFont('helvetica', 'normal')
           doc.setFontSize(5.5)
           doc.setTextColor(210)
-          doc.text(letras[a], bcx - 1.2, bcy + 1)
+          const letraW = doc.getTextWidth(letras[a])
+          doc.text(letras[a], bcx - letraW / 2, bcy + 1)
         }
       }
     }
