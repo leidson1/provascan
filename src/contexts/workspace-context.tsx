@@ -8,8 +8,9 @@ interface WorkspaceContextType {
   workspaceId: number
   role: 'dono' | 'corretor'
   workspace: Workspace
-  memberships: WorkspaceMember[]
+  memberships: (WorkspaceMember & { workspace: Workspace })[]
   switchWorkspace: (id: number) => void
+  leaveWorkspace: (wsId: number) => Promise<boolean>
   refreshWorkspace: () => Promise<void>
 }
 
@@ -64,6 +65,33 @@ export function WorkspaceProvider({ userId, children }: Props) {
     localStorage.setItem(STORAGE_KEY, String(id))
   }, [])
 
+  const leaveWorkspace = useCallback(async (wsId: number): Promise<boolean> => {
+    // Não pode sair de workspace onde é dono
+    const membership = memberships.find(m => m.workspace_id === wsId)
+    if (!membership || membership.role === 'dono') return false
+
+    const { error } = await supabase
+      .from('workspace_members')
+      .delete()
+      .eq('workspace_id', wsId)
+      .eq('user_id', userId)
+
+    if (error) return false
+
+    // Se era o workspace ativo, trocar para o workspace próprio (dono)
+    if (currentWsId === wsId) {
+      const owned = memberships.find(m => m.workspace_id !== wsId && m.role === 'dono')
+      const fallback = owned || memberships.find(m => m.workspace_id !== wsId)
+      if (fallback) {
+        setCurrentWsId(fallback.workspace_id)
+        localStorage.setItem(STORAGE_KEY, String(fallback.workspace_id))
+      }
+    }
+
+    await fetchMemberships()
+    return true
+  }, [supabase, userId, memberships, currentWsId, fetchMemberships])
+
   if (loading || !currentWsId) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -83,6 +111,7 @@ export function WorkspaceProvider({ userId, children }: Props) {
         workspace: currentWorkspace,
         memberships,
         switchWorkspace,
+        leaveWorkspace,
         refreshWorkspace: fetchMemberships,
       }}
     >
