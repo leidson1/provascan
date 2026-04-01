@@ -100,6 +100,7 @@ export default function CartoesPage() {
         tipoProva: prova.tipo_prova,
         tiposQuestoes: prova.tipos_questoes || undefined,
         criterioDiscursiva: prova.criterio_discursiva,
+        pesosQuestoes: prova.pesos_questoes || undefined,
       })
 
       if (!doc) {

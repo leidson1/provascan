@@ -34,6 +34,7 @@ export interface CardGenParams {
   tipoProva?: 'objetiva' | 'mista' | 'discursiva'
   tiposQuestoes?: string   // "O,O,D,D,O,..."
   criterioDiscursiva?: number  // 2, 3, 4
+  pesosQuestoes?: string   // "1,1,2,1,3,..."
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -202,7 +203,8 @@ function desenharCartao(
   prova: CardGenProva,
   aluno: CardGenAluno,
   tiposQuestoes?: string,
-  criterioDiscursiva?: number
+  criterioDiscursiva?: number,
+  pesosQuestoes?: string
 ): void {
   const C = CARTAO
   const nq = prova.numQuestoes
@@ -296,6 +298,7 @@ function desenharCartao(
   // ── 5. Grade de bolhas ──
   const tipos = tiposQuestoes?.split(',') || []
   const criterio = criterioDiscursiva || 3
+  const pesos = pesosQuestoes ? pesosQuestoes.split(',').map(Number) : []
 
   // Mapeamento de letras de critério por nível
   const criterioLetras: Record<number, string[]> = {
@@ -348,12 +351,19 @@ function desenharCartao(
       const rowY = baseY + row * C.linhaAltura
       const isDiscursiva = tipos[q]?.trim() === 'D'
 
-      // Número da questão
+      // Número da questão + peso (se disponível)
       const qNum = ('0' + (q + 1)).slice(-2)
+      const peso = pesos[q]
+      const pesoStr = peso != null && peso > 0 ? ` (${peso % 1 === 0 ? peso.toFixed(0) : peso.toFixed(1)})` : ''
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7)
       doc.setTextColor(isDiscursiva ? 59 : 140, isDiscursiva ? 130 : 140, isDiscursiva ? 246 : 140)
-      doc.text(qNum, baseX + 3, rowY + C.linhaAltura / 2 + 1)
+      doc.text(qNum, baseX + 1.5, rowY + C.linhaAltura / 2 + 1)
+      if (pesoStr) {
+        doc.setFontSize(4.5)
+        doc.setTextColor(170)
+        doc.text(pesoStr, baseX + 7, rowY + C.linhaAltura / 2 + 1)
+      }
 
       if (isDiscursiva) {
         // Bolhas de critério discursivo (azuis, centralizadas)
@@ -453,7 +463,7 @@ function desenharLinhaCorte(doc: jsPDF): void {
  * Retorna o documento jsPDF (caller pode .save() ou .output()).
  */
 export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
-  const { prova, alunos, baseUrl, tipoProva, criterioDiscursiva } = params
+  const { prova, alunos, baseUrl, tipoProva, criterioDiscursiva, pesosQuestoes } = params
   let tiposQuestoes = params.tiposQuestoes
 
   // Discursiva pura agora gera cartão com bolhas de critério
@@ -483,7 +493,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
     if (i > 0 && pos === 0) doc.addPage()
 
     const yOff = pos * C.altura
-    desenharCartao(doc, yOff, prova, alunos[i], tiposQuestoes, criterioDiscursiva)
+    desenharCartao(doc, yOff, prova, alunos[i], tiposQuestoes, criterioDiscursiva, pesosQuestoes)
 
     // Linha de corte entre os dois cartões
     if (pos === 0) {
@@ -503,7 +513,7 @@ export function gerarCartoesPDF(params: CardGenParams): jsPDF | null {
       nome: 'RESERVA',
       numero: 'R' + (r + 1),
     }
-    desenharCartao(doc, yOff, prova, reservaAluno, tiposQuestoes, criterioDiscursiva)
+    desenharCartao(doc, yOff, prova, reservaAluno, tiposQuestoes, criterioDiscursiva, pesosQuestoes)
     // Linha de corte
     if (pos === 0) {
       desenharLinhaCorte(doc)
