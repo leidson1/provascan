@@ -2,12 +2,12 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 import Link from 'next/link'
-import { Plus, Pencil, Trash2, MoreVertical, Users, GraduationCap } from 'lucide-react'
+import { Plus, Pencil, Trash2, MoreVertical, Users, GraduationCap, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -69,6 +69,22 @@ export default function TurmasPage() {
   const [turma, setTurma] = useState('')
   const [turno, setTurno] = useState<string>('Manhã')
   const [saving, setSaving] = useState(false)
+  const [sortKey, setSortKey] = useState<'serie' | 'turma' | 'turno' | 'alunos'>('serie')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  function SortIcon({ col }: { col: typeof sortKey }) {
+    if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 text-gray-300" />
+    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+  }
 
   const fetchTurmas = useCallback(async () => {
     try {
@@ -92,6 +108,24 @@ export default function TurmasPage() {
   useEffect(() => {
     fetchTurmas()
   }, [fetchTurmas])
+
+  const sortedTurmas = useMemo(() => {
+    const arr = [...turmas]
+    arr.sort((a, b) => {
+      let va: string | number, vb: string | number
+      if (sortKey === 'alunos') {
+        va = getAlunosCount(a)
+        vb = getAlunosCount(b)
+      } else {
+        va = (a[sortKey] || '').toLowerCase()
+        vb = (b[sortKey] || '').toLowerCase()
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+    return arr
+  }, [turmas, sortKey, sortDir])
 
   function getAlunosCount(t: Turma): number {
     return t.alunos?.[0]?.count ?? 0
@@ -227,15 +261,23 @@ export default function TurmasPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Série</TableHead>
-                <TableHead>Turma</TableHead>
-                <TableHead>Turno</TableHead>
-                <TableHead>Alunos</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('serie')}>
+                  <span className="inline-flex items-center gap-1">Série <SortIcon col="serie" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('turma')}>
+                  <span className="inline-flex items-center gap-1">Turma <SortIcon col="turma" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('turno')}>
+                  <span className="inline-flex items-center gap-1">Turno <SortIcon col="turno" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('alunos')}>
+                  <span className="inline-flex items-center gap-1">Alunos <SortIcon col="alunos" /></span>
+                </TableHead>
                 <TableHead className="w-[70px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {turmas.map((t) => (
+              {sortedTurmas.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.serie}</TableCell>
                   <TableCell>{t.turma}</TableCell>

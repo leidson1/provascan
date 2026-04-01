@@ -2,11 +2,11 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, MoreVertical, BookOpen } from 'lucide-react'
+import { Plus, Pencil, Trash2, MoreVertical, BookOpen, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -53,6 +53,19 @@ export default function DisciplinasPage() {
   const [deletingDisciplina, setDeletingDisciplina] = useState<Disciplina | null>(null)
   const [nome, setNome] = useState('')
   const [saving, setSaving] = useState(false)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const sortedDisciplinas = useMemo(() => {
+    const arr = [...disciplinas]
+    arr.sort((a, b) => {
+      const va = (a.nome || '').toLowerCase()
+      const vb = (b.nome || '').toLowerCase()
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+    return arr
+  }, [disciplinas, sortDir])
 
   const fetchDisciplinas = useCallback(async () => {
     try {
@@ -200,12 +213,16 @@ export default function DisciplinasPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nome</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
+                  <span className="inline-flex items-center gap-1">
+                    Nome {sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                  </span>
+                </TableHead>
                 {!isCorretor && <TableHead className="w-[70px]">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {disciplinas.map((disciplina) => (
+              {sortedDisciplinas.map((disciplina) => (
                 <TableRow key={disciplina.id}>
                   <TableCell className="font-medium">{disciplina.nome}</TableCell>
                   {!isCorretor && (

@@ -6,7 +6,8 @@ import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, FileText, MoreVertical, ClipboardCheck, BookOpen,
-  BarChart3, CreditCard, Trash2, Pencil, Save, Loader2, CheckCircle2
+  BarChart3, CreditCard, Trash2, Pencil, Save, Loader2, CheckCircle2,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -120,6 +121,43 @@ function ProvasPage() {
   const [editingProva, setEditingProva] = useState<ProvaRow | null>(null)
   const [gabaritoProva, setGabaritoProva] = useState<ProvaRow | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Sort
+  const [sortKey, setSortKey] = useState<'data' | 'disciplina' | 'turma' | 'questoes' | 'status'>('data')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'data' ? 'desc' : 'asc')
+    }
+  }
+
+  function PSortIcon({ col }: { col: typeof sortKey }) {
+    if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 text-gray-300" />
+    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+  }
+
+  const sortedProvas = useMemo(() => {
+    const arr = [...provas]
+    arr.sort((a, b) => {
+      let va: string | number, vb: string | number
+      switch (sortKey) {
+        case 'data': va = a.data || ''; vb = b.data || ''; break
+        case 'disciplina': va = (a.disciplina?.nome || '').toLowerCase(); vb = (b.disciplina?.nome || '').toLowerCase(); break
+        case 'turma': va = (a.turma ? `${a.turma.serie} ${a.turma.turma}` : '').toLowerCase(); vb = (b.turma ? `${b.turma.serie} ${b.turma.turma}` : '').toLowerCase(); break
+        case 'questoes': va = a.num_questoes; vb = b.num_questoes; break
+        case 'status': va = a.status || ''; vb = b.status || ''; break
+        default: va = ''; vb = ''
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+    return arr
+  }, [provas, sortKey, sortDir])
 
   // Gabarito modal form
   const [formGabarito, setFormGabarito] = useState('')
@@ -315,17 +353,27 @@ function ProvasPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Disciplina</TableHead>
-                  <TableHead>Turma</TableHead>
-                  <TableHead className="text-center">Questões</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('data')}>
+                    <span className="inline-flex items-center gap-1">Data <PSortIcon col="data" /></span>
+                  </TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('disciplina')}>
+                    <span className="inline-flex items-center gap-1">Disciplina <PSortIcon col="disciplina" /></span>
+                  </TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('turma')}>
+                    <span className="inline-flex items-center gap-1">Turma <PSortIcon col="turma" /></span>
+                  </TableHead>
+                  <TableHead className="cursor-pointer select-none text-center" onClick={() => toggleSort('questoes')}>
+                    <span className="inline-flex items-center gap-1 justify-center">Questões <PSortIcon col="questoes" /></span>
+                  </TableHead>
                   <TableHead>Gabarito</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('status')}>
+                    <span className="inline-flex items-center gap-1">Status <PSortIcon col="status" /></span>
+                  </TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {provas.map((prova) => (
+                {sortedProvas.map((prova) => (
                   <TableRow key={prova.id}>
                     <TableCell className="font-medium">{formatDate(prova.data)}</TableCell>
                     <TableCell>{prova.disciplina?.nome ?? '\u2014'}</TableCell>
