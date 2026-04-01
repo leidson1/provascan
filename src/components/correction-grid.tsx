@@ -125,16 +125,16 @@ export function CorrectionGrid({
     }
   }
 
-  function questaoDisplay(value: number | undefined) {
+  function questaoDisplay(value: number | undefined, gabLetra: string) {
     if (value === 1)
       return {
-        label: '1',
+        label: gabLetra || '1',
         className:
           'bg-green-100 text-green-700 border-green-300 hover:bg-green-200',
       }
     if (value === 0)
       return {
-        label: '0',
+        label: 'X',
         className: 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200',
       }
     return {
@@ -170,7 +170,7 @@ export function CorrectionGrid({
                 >
                   <div>Q{i + 1}</div>
                   {isDiscursiva ? (
-                    <div className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold bg-blue-500 text-white">
+                    <div className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold bg-violet-500 text-white">
                       D
                     </div>
                   ) : (
@@ -263,7 +263,7 @@ export function CorrectionGrid({
                     )
                   }
 
-                  const qDisplay = questaoDisplay(val)
+                  const qDisplay = questaoDisplay(val, gabarito[qIdx])
 
                   return (
                     <td key={qIdx} className="px-1 py-1 text-center">
