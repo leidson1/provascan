@@ -4,7 +4,7 @@
  * Abordagem progressiva: tenta rápido primeiro, escala se falhar
  */
 
-import { CARTAO, calcPosicoesBolhas, type BubblePosition } from './card-layout'
+import { CARTAO, calcPosicoesBolhas, calcPosicoesBolhasMista, type BubblePosition } from './card-layout'
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -129,10 +129,35 @@ export class OMREngine {
    * Processa um canvas contendo a foto de um cartão-resposta.
    * Retorna resultado OMR com QR, respostas e debug.
    */
-  process(canvas: HTMLCanvasElement, nq: number, nalts: number): OMRResult {
+  process(
+    canvas: HTMLCanvasElement,
+    nq: number,
+    nalts: number,
+    tiposQuestoes?: string,
+    criterioDiscursiva?: number
+  ): OMRResult {
     nq = nq || 10
     nalts = nalts || 5
-    const letras = ['A', 'B', 'C', 'D', 'E'].slice(0, nalts)
+    const letrasObj = ['A', 'B', 'C', 'D', 'E'].slice(0, nalts)
+    const criterioLetrasMap: Record<number, string[]> = {
+      2: ['C', 'E'],
+      3: ['C', 'P', 'E'],
+      4: ['E', 'B', 'P', 'I'],
+    }
+    const tipos = tiposQuestoes ? tiposQuestoes.split(',') : []
+    const criterio = criterioDiscursiva || 3
+
+    // Construir letras por questão
+    const letrasPerQ: string[][] = []
+    for (let q = 0; q < nq; q++) {
+      if (tipos[q]?.trim() === 'D') {
+        letrasPerQ.push(criterioLetrasMap[criterio] || criterioLetrasMap[3])
+      } else {
+        letrasPerQ.push(letrasObj)
+      }
+    }
+    // Para compatibilidade, letras padrão (usado quando não há tipos)
+    const letras = letrasObj
 
     let src: any = null
     let gray: any = null
@@ -203,12 +228,12 @@ export class OMREngine {
       // ── Bolhas: leitura direta + fallback ──
       wGray = new cv.Mat()
       cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
-      const respostas = this._lerBolhas(wGray, nq, nalts, letras)
+      const respostas = this._lerBolhasMista(wGray, nq, nalts, letrasPerQ, tiposQuestoes, criterioDiscursiva)
 
       // ── Debug: gerar imagem anotada da perspectiva corrigida ──
       let debugData: { imageUrl: string; levels: DebugLevel[] } | undefined
       try {
-        debugData = this._gerarDebug(warped, wGray, nq, nalts, respostas)
+        debugData = this._gerarDebugMista(warped, wGray, nq, nalts, respostas, tiposQuestoes, criterioDiscursiva)
       } catch {
         // debug falhou, ignora
       }
@@ -620,7 +645,252 @@ export class OMREngine {
     return null
   }
 
-  // ── LEITURA DE BOLHAS ─────────────────────────────────────
+  // ── LEITURA DE BOLHAS (MISTA) ─────────────────────────────
+
+  private _lerBolhasMista(
+    wGray: any,
+    nq: number,
+    nalts: number,
+    letrasPerQ: string[][],
+    tiposQuestoes?: string,
+    criterioDiscursiva?: number
+  ): OMRResposta[] {
+    const px = OMREngine.PX_MM
+    const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
+    const raio = Math.round(CARTAO.bolhaRaio * px * 0.75)
+
+    // Leitura principal
+    const wBin1 = new cv.Mat()
+    cv.adaptiveThreshold(
+      wGray, wBin1, 255,
+      cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 8
+    )
+    const leitura1 = this._lerBolhasUmaVezMista(wBin1, posicoes, nq, raio)
+    wBin1.delete()
+
+    // Verificar se precisa fallback
+    let precisaFallback = false
+    for (let q = 0; q < nq; q++) {
+      let maxN = 0
+      for (let a = 0; a < leitura1[q].length; a++) {
+        if (leitura1[q][a] > maxN) maxN = leitura1[q][a]
+      }
+      if (maxN < OMREngine.MIN_FILL * 1.5) {
+        precisaFallback = true
+        break
+      }
+    }
+
+    if (!precisaFallback) {
+      return this._decidirRespostasMista(leitura1, nq, letrasPerQ)
+    }
+
+    // Fallback
+    const wBin2 = new cv.Mat()
+    cv.adaptiveThreshold(
+      wGray, wBin2, 255,
+      cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 21, 6
+    )
+    const leitura2 = this._lerBolhasUmaVezMista(wBin2, posicoes, nq, raio)
+    wBin2.delete()
+
+    const combinado: number[][] = []
+    for (let q = 0; q < nq; q++) {
+      const niveis: number[] = []
+      for (let a = 0; a < leitura1[q].length; a++) {
+        niveis.push((leitura1[q][a] + leitura2[q][a]) / 2)
+      }
+      combinado.push(niveis)
+    }
+
+    const resultado = this._decidirRespostasMista(combinado, nq, letrasPerQ)
+    let ambiguas = 0
+    for (let q = 0; q < resultado.length; q++) {
+      if (resultado[q].status === 'ambigua' || resultado[q].status === 'vazia') ambiguas++
+    }
+
+    if (ambiguas > nq * 0.3) {
+      const wBin3 = new cv.Mat()
+      cv.adaptiveThreshold(
+        wGray, wBin3, 255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 5
+      )
+      const leitura3 = this._lerBolhasUmaVezMista(wBin3, posicoes, nq, raio)
+      wBin3.delete()
+
+      const triplo: number[][] = []
+      for (let q = 0; q < nq; q++) {
+        const niveis: number[] = []
+        for (let a = 0; a < leitura1[q].length; a++) {
+          niveis.push((leitura1[q][a] + leitura2[q][a] + leitura3[q][a]) / 3)
+        }
+        triplo.push(niveis)
+      }
+      return this._decidirRespostasMista(triplo, nq, letrasPerQ)
+    }
+
+    return resultado
+  }
+
+  private _lerBolhasUmaVezMista(
+    matBin: any,
+    posicoes: BubblePosition[][],
+    nq: number,
+    raio: number
+  ): number[][] {
+    const resultados: number[][] = []
+    for (let q = 0; q < nq; q++) {
+      const niveis: number[] = []
+      const numBolhas = posicoes[q].length
+      for (let a = 0; a < numBolhas; a++) {
+        const cx = Math.round(posicoes[q][a].cx * OMREngine.PX_MM)
+        const cy = Math.round(posicoes[q][a].cy * OMREngine.PX_MM)
+        niveis.push(this._nivelBolha(matBin, cx, cy, raio))
+      }
+      resultados.push(niveis)
+    }
+    return resultados
+  }
+
+  private _decidirRespostasMista(
+    niveis: number[][],
+    nq: number,
+    letrasPerQ: string[][]
+  ): OMRResposta[] {
+    const respostas: OMRResposta[] = []
+
+    for (let q = 0; q < nq; q++) {
+      const qLetras = letrasPerQ[q]
+      const qNalts = qLetras.length
+
+      const sorted: { idx: number; val: number }[] = []
+      for (let a = 0; a < qNalts; a++) {
+        sorted.push({ idx: a, val: niveis[q][a] })
+      }
+      sorted.sort((a, b) => b.val - a.val)
+
+      const maxNivel = sorted[0].val
+      const maxIdx = sorted[0].idx
+      const secondMax = sorted.length > 1 ? sorted[1].val : 0
+
+      const outros: number[] = []
+      for (let a = 1; a < sorted.length; a++) outros.push(sorted[a].val)
+      outros.sort((a, b) => a - b)
+      const mediana = outros.length > 0 ? outros[Math.floor(outros.length / 2)] : 0
+
+      const resp: OMRResposta = {
+        questao: q + 1,
+        niveis: niveis[q],
+        marcada: null,
+        confianca: 0,
+        status: 'vazia',
+      }
+
+      const destaque = mediana > 0 ? maxNivel / mediana : (maxNivel > 0.05 ? 10 : 0)
+
+      const threshAlto = mediana > 0 ? mediana * 1.8 : 0.10
+      let bolhasAltas = 0
+      for (let a = 0; a < qNalts; a++) {
+        if (niveis[q][a] >= threshAlto && niveis[q][a] >= 0.10) {
+          bolhasAltas++
+        }
+      }
+
+      if (destaque < 1.3) {
+        resp.marcada = null
+        resp.confianca = 0
+        resp.status = 'vazia'
+      } else if (bolhasAltas >= 2 && secondMax > maxNivel * 0.55) {
+        resp.marcada = 'DUPLA'
+        resp.confianca = 0
+        resp.status = 'ambigua'
+      } else {
+        resp.marcada = qLetras[maxIdx]
+        resp.confianca = maxNivel
+        resp.status = 'ok'
+      }
+
+      respostas.push(resp)
+    }
+
+    return respostas
+  }
+
+  // ── DEBUG (MISTA) ──────────────────────────────────────────
+
+  private _gerarDebugMista(
+    warped: any,
+    wGray: any,
+    nq: number,
+    nalts: number,
+    respostas: OMRResposta[],
+    tiposQuestoes?: string,
+    criterioDiscursiva?: number
+  ): { imageUrl: string; levels: DebugLevel[] } {
+    const px = OMREngine.PX_MM
+    const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
+    const raio = Math.round(CARTAO.bolhaRaio * px * 1.1)
+
+    const debug = warped.clone()
+
+    for (let q = 0; q < nq; q++) {
+      const resp = respostas[q]
+      const numBolhas = posicoes[q].length
+      for (let a = 0; a < numBolhas; a++) {
+        const cx = Math.round(posicoes[q][a].cx * px)
+        const cy = Math.round(posicoes[q][a].cy * px)
+        const nivel = resp.niveis[a]
+        const nivelPct = Math.round(nivel * 100)
+
+        let cor: any
+        if (resp.status === 'ok' && a === resp.niveis.indexOf(Math.max(...resp.niveis))) {
+          cor = new cv.Scalar(0, 255, 0, 255)
+        } else if (nivel > OMREngine.MIN_FILL) {
+          cor = new cv.Scalar(255, 165, 0, 255)
+        } else {
+          cor = new cv.Scalar(128, 128, 128, 255)
+        }
+
+        cv.circle(debug, new cv.Point(cx, cy), raio, cor, 2)
+        cv.putText(
+          debug,
+          nivelPct + '%',
+          new cv.Point(cx - 12, cy - raio - 3),
+          cv.FONT_HERSHEY_SIMPLEX,
+          0.35,
+          cor,
+          1
+        )
+      }
+    }
+
+    const tmpCanvas = document.createElement('canvas')
+    tmpCanvas.width = debug.cols
+    tmpCanvas.height = debug.rows
+    cv.imshow(tmpCanvas, debug)
+    const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.8)
+    tmpCanvas.width = 0
+    tmpCanvas.height = 0
+    debug.delete()
+
+    const rawLevels: DebugLevel[] = []
+    for (let q = 0; q < nq; q++) {
+      const row: DebugLevel = {
+        q: q + 1,
+        niveis: [],
+        marcada: respostas[q].marcada || '-',
+        status: respostas[q].status,
+      }
+      for (let a = 0; a < respostas[q].niveis.length; a++) {
+        row.niveis.push(Math.round(respostas[q].niveis[a] * 100))
+      }
+      rawLevels.push(row)
+    }
+
+    return { imageUrl: dataUrl, levels: rawLevels }
+  }
+
+  // ── LEITURA DE BOLHAS (legado) ──────────────────────────────
 
   private _lerBolhas(wGray: any, nq: number, nalts: number, letras: string[]): OMRResposta[] {
     const px = OMREngine.PX_MM

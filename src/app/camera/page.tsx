@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { Prova, Aluno, Resultado } from '@/types/database'
+import { CRITERIOS_DISCURSIVA } from '@/types/database'
 
 // ── Types ──────────────────────────────────────────────────────
 interface OMRResult {
@@ -38,14 +39,33 @@ function parseGabarito(raw: string | null): string[] {
 
 function computeScore(
   respostas: string[],
-  gabarito: string[]
+  gabarito: string[],
+  tiposQuestoes?: string | null,
+  criterioDiscursiva?: number
 ): { acertos: number; percentual: number } {
+  const criterioMap: Record<number, Record<string, number>> = {
+    2: { C: 1, E: 0 },
+    3: { C: 1, P: 0.5, E: 0 },
+    4: { E: 1, B: 0.75, P: 0.5, I: 0 },
+  }
+  const tipos = tiposQuestoes ? tiposQuestoes.split(',') : []
+  const criterio = criterioDiscursiva || 3
+
   let acertos = 0
   const total = gabarito.length
   for (let i = 0; i < total; i++) {
     const gab = gabarito[i]
     if (!gab || gab === 'X' || gab === '*') continue // anulada
-    if (respostas[i] && respostas[i].toUpperCase() === gab) acertos++
+    const isDisc = tipos[i]?.trim() === 'D'
+    if (isDisc) {
+      // Discursiva: pontuar pelo critério marcado
+      const valorMap = criterioMap[criterio] || criterioMap[3]
+      const valor = valorMap[respostas[i]?.toUpperCase()] ?? 0
+      acertos += valor
+    } else {
+      // Objetiva: comparar com gabarito
+      if (respostas[i] && respostas[i].toUpperCase() === gab) acertos++
+    }
   }
   return { acertos, percentual: total > 0 ? Math.round((acertos / total) * 100) : 0 }
 }
@@ -322,7 +342,11 @@ function CameraPage() {
         const engine = omrEngineRef.current
         const nq = prova?.num_questoes || gabarito.length
         const nalts = prova?.num_alternativas || 5
-        const result = engine.process(canvas, nq, nalts)
+        const result = engine.process(
+          canvas, nq, nalts,
+          prova?.tipos_questoes || undefined,
+          prova?.criterio_discursiva || undefined
+        )
 
         if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
           // OMRResposta[] → string[] (extrair a letra marcada de cada questão)
@@ -382,8 +406,8 @@ function CameraPage() {
 
   const currentAluno = currentAlunoId ? findAlunoById(currentAlunoId) : null
   const currentScore = useMemo(
-    () => computeScore(currentRespostas, gabarito),
-    [currentRespostas, gabarito]
+    () => computeScore(currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva),
+    [currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva]
   )
 
   // ── Confirm result ──
@@ -804,13 +828,19 @@ function CameraPage() {
             }}>
               {currentRespostas.map((resp, i) => {
                 const gab = gabarito[i] || ''
+                const tipos = prova?.tipos_questoes?.split(',') || []
+                const isDisc = tipos[i]?.trim() === 'D'
                 const isAnulada = gab === 'X' || gab === '*'
-                const isCorrect = !isAnulada && resp && resp.toUpperCase() === gab
+                // Para discursivas, qualquer resposta marcada é válida (não compara com gabarito)
+                const isCorrect = isDisc
+                  ? false // discursivas não têm certo/errado na câmera
+                  : (!isAnulada && !!resp && resp.toUpperCase() === gab)
                 const isEmpty = !resp
                 const isEditing = editingQuestion === i
 
                 let cellClass = 'bg-slate-700 text-slate-400' // empty
                 if (isAnulada) cellClass = 'bg-yellow-900/50 text-yellow-400'
+                else if (isDisc && !isEmpty) cellClass = 'bg-blue-900/50 text-blue-300'
                 else if (!isEmpty && isCorrect) cellClass = 'bg-emerald-900/50 text-emerald-400'
                 else if (!isEmpty && !isCorrect) cellClass = 'bg-red-900/50 text-red-300'
 
@@ -825,29 +855,38 @@ function CameraPage() {
                     </button>
 
                     {/* Edit popover */}
-                    {isEditing && (
-                      <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 bg-slate-700 rounded-lg p-1.5 shadow-xl flex gap-1 min-w-max">
-                        {ALTS.slice(0, prova?.num_alternativas || 5).map((alt) => (
+                    {isEditing && (() => {
+                      const tipos = prova?.tipos_questoes?.split(',') || []
+                      const isDisc = tipos[i]?.trim() === 'D'
+                      const criterio = (prova?.criterio_discursiva || 3) as 2 | 3 | 4
+                      const opcoes = isDisc
+                        ? CRITERIOS_DISCURSIVA[criterio].map((c) => c.label)
+                        : ALTS.slice(0, prova?.num_alternativas || 5)
+
+                      return (
+                        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 bg-slate-700 rounded-lg p-1.5 shadow-xl flex gap-1 min-w-max">
+                          {opcoes.map((alt) => (
+                            <button
+                              key={alt}
+                              onClick={() => handleAnswerSelect(i, alt)}
+                              className={`w-8 h-8 rounded text-xs font-bold transition-colors ${
+                                resp === alt
+                                  ? isDisc ? 'bg-blue-600 text-white' : 'bg-indigo-600 text-white'
+                                  : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
+                              }`}
+                            >
+                              {alt}
+                            </button>
+                          ))}
                           <button
-                            key={alt}
-                            onClick={() => handleAnswerSelect(i, alt)}
-                            className={`w-8 h-8 rounded text-xs font-bold transition-colors ${
-                              resp === alt
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
-                            }`}
+                            onClick={() => handleAnswerSelect(i, '')}
+                            className="w-8 h-8 rounded text-xs font-bold bg-slate-600 text-slate-400 hover:bg-slate-500"
                           >
-                            {alt}
+                            -
                           </button>
-                        ))}
-                        <button
-                          onClick={() => handleAnswerSelect(i, '')}
-                          className="w-8 h-8 rounded text-xs font-bold bg-slate-600 text-slate-400 hover:bg-slate-500"
-                        >
-                          -
-                        </button>
-                      </div>
-                    )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
