@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import { useWorkspace } from '@/contexts/workspace-context'
+import { useWorkspace, useIsGestor } from '@/contexts/workspace-context'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -106,7 +106,8 @@ function ProvasPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { workspaceId, role } = useWorkspace()
-  const isCorretor = role === 'corretor'
+  const isGestor = useIsGestor()
+  const isCorretor = !isGestor
 
   const [provas, setProvas] = useState<ProvaRow[]>([])
   const [disciplinas, setDisciplinas] = useState<Disciplina[]>([])

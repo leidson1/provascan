@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { createClient } from '@/lib/supabase/client'
-import { useWorkspace, useIsDono } from '@/contexts/workspace-context'
+import { useWorkspace, useIsDono, useIsGestor } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 
 interface SidebarProps {
@@ -37,6 +37,7 @@ export function SidebarContent({ user, currentPath }: SidebarProps) {
   const supabase = createClient()
   const { workspace, memberships, switchWorkspace, leaveWorkspace, workspaceId, role, newWorkspacesCount, markAllSeen } = useWorkspace()
   const isDono = useIsDono()
+  const isGestor = useIsGestor()
   const [wsMenuOpen, setWsMenuOpen] = useState(false)
   const [confirmLeave, setConfirmLeave] = useState<number | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -77,8 +78,8 @@ export function SidebarContent({ user, currentPath }: SidebarProps) {
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, visible: true },
     { href: '/provas', label: 'Provas', icon: FileText, visible: true },
-    { href: '/disciplinas', label: 'Disciplinas', icon: BookOpen, visible: isDono },
-    { href: '/turmas', label: 'Turmas', icon: Users, visible: isDono },
+    { href: '/disciplinas', label: 'Disciplinas', icon: BookOpen, visible: isGestor },
+    { href: '/turmas', label: 'Turmas', icon: Users, visible: isGestor },
     { href: '/equipe', label: 'Equipe', icon: UserPlus, visible: isDono },
     { href: '/configuracoes', label: 'Configurações', icon: Settings, visible: isDono },
   ]
@@ -164,9 +165,11 @@ export function SidebarContent({ user, currentPath }: SidebarProps) {
                         <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${
                           isOwner
                             ? 'bg-amber-500/20 text-amber-400'
-                            : 'bg-indigo-500/20 text-indigo-300'
+                            : m.role === 'coordenador'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-indigo-500/20 text-indigo-300'
                         }`}>
-                          {isOwner ? 'dono' : 'corretor'}
+                          {m.role}
                         </span>
                       </button>
                       {!isOwner && (

@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useWorkspace } from '@/contexts/workspace-context'
+import { useWorkspace, useIsGestor } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { Plus, Pencil, Trash2, MoreVertical, Users, GraduationCap, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
@@ -58,7 +58,8 @@ const TURNOS = ['Manhã', 'Tarde', 'Integral', 'Noite'] as const
 export default function TurmasPage() {
   const supabase = createClient()
   const { workspaceId, role } = useWorkspace()
-  const isCorretor = role === 'corretor'
+  const isGestor = useIsGestor()
+  const isCorretor = !isGestor
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)

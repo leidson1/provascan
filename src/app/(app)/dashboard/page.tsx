@@ -13,7 +13,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useWorkspace } from '@/contexts/workspace-context'
+import { useWorkspace, useIsGestor } from '@/contexts/workspace-context'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -92,6 +92,7 @@ export default function DashboardPage() {
   const supabase = createClient()
   const router = useRouter()
   const { workspaceId, role } = useWorkspace()
+  const isGestor = useIsGestor()
   const [stats, setStats] = useState<DashboardStats>({
     provas: 0,
     turmas: 0,
@@ -206,7 +207,7 @@ export default function DashboardPage() {
             Visão geral do seu ProvaScan
           </p>
         </div>
-        {role === 'dono' && (
+        {isGestor && (
           <Button onClick={() => router.push('/provas?nova=1')}>
             <Plus className="mr-2 h-4 w-4" />
             Nova Prova
@@ -253,7 +254,7 @@ export default function DashboardPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Crie sua primeira prova para começar!
               </p>
-              {role === 'dono' && (
+              {isGestor && (
                 <Button onClick={() => router.push('/provas?nova=1')} className="mt-4" size="sm">
                   <Plus className="mr-2 h-4 w-4" />
                   Nova Prova

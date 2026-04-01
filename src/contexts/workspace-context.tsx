@@ -6,7 +6,7 @@ import type { Workspace, WorkspaceMember } from '@/types/database'
 
 interface WorkspaceContextType {
   workspaceId: number
-  role: 'dono' | 'corretor'
+  role: 'dono' | 'coordenador' | 'corretor'
   workspace: Workspace
   memberships: (WorkspaceMember & { workspace: Workspace })[]
   switchWorkspace: (id: number) => void
@@ -150,4 +150,10 @@ export function useWorkspace() {
 export function useIsDono() {
   const { role } = useWorkspace()
   return role === 'dono'
+}
+
+/** Dono ou Coordenador — pode criar, editar, corrigir (quase tudo) */
+export function useIsGestor() {
+  const { role } = useWorkspace()
+  return role === 'dono' || role === 'coordenador'
 }

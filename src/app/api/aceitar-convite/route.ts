@@ -61,13 +61,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Você já faz parte desta equipe' })
     }
 
-    // Adicionar como corretor
+    // Adicionar com o papel definido no convite
     const { error: memberError } = await supabaseAdmin
       .from('workspace_members')
       .insert({
         workspace_id: convite.workspace_id,
         user_id: user.id,
-        role: 'corretor',
+        role: convite.role || 'corretor',
       })
 
     if (memberError) {

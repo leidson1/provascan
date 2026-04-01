@@ -19,7 +19,7 @@ export interface WorkspaceMember {
   id: number
   workspace_id: number
   user_id: string
-  role: 'dono' | 'corretor'
+  role: 'dono' | 'coordenador' | 'corretor'
   created_at: string
   // Joined
   workspace?: Workspace

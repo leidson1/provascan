@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { useWorkspace } from '@/contexts/workspace-context'
+import { useWorkspace, useIsGestor } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 import {
   Plus,
@@ -65,7 +65,8 @@ export default function AlunosPage() {
   const turmaId = params.id as string
   const supabase = createClient()
   const { workspaceId, role } = useWorkspace()
-  const isCorretor = role === 'corretor'
+  const isGestor = useIsGestor()
+  const isCorretor = !isGestor
 
   const [turma, setTurma] = useState<Turma | null>(null)
   const [alunos, setAlunos] = useState<Aluno[]>([])

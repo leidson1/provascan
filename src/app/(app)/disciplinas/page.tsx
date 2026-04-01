@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useWorkspace } from '@/contexts/workspace-context'
+import { useWorkspace, useIsGestor } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, MoreVertical, BookOpen, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -44,7 +44,8 @@ interface Disciplina {
 export default function DisciplinasPage() {
   const supabase = createClient()
   const { workspaceId, role } = useWorkspace()
-  const isCorretor = role === 'corretor'
+  const isGestor = useIsGestor()
+  const isCorretor = !isGestor
   const [disciplinas, setDisciplinas] = useState<Disciplina[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)

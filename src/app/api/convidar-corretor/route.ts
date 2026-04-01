@@ -23,7 +23,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { email, workspaceId } = body
+    const { email, workspaceId, role: inviteRole } = body
+    const memberRole = inviteRole === 'coordenador' ? 'coordenador' : 'corretor'
 
     if (!email || !workspaceId) {
       return NextResponse.json({ error: 'Preencha o email' }, { status: 400 })
@@ -91,13 +92,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Este professor já faz parte da equipe' }, { status: 409 })
       }
 
-      // Adicionar como corretor
+      // Adicionar ao workspace
       const { error: memberError } = await supabaseAdmin
         .from('workspace_members')
         .insert({
           workspace_id: workspaceId,
           user_id: existingUser.id,
-          role: 'corretor',
+          role: memberRole,
         })
 
       if (memberError) {
@@ -141,6 +142,7 @@ export async function POST(request: Request) {
           email: email.trim().toLowerCase(),
           token,
           criado_por: caller.id,
+          role: memberRole,
         })
 
       if (inviteError) {

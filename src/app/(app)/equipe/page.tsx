@@ -22,7 +22,7 @@ interface Member {
   id: number
   workspace_id: number
   user_id: string
-  role: 'dono' | 'corretor'
+  role: 'dono' | 'coordenador' | 'corretor'
   created_at: string
   profile: { nome: string; email: string }
 }
@@ -47,6 +47,7 @@ export default function EquipePage() {
   // Invite dialog
   const [inviteOpen, setInviteOpen] = useState(false)
   const [formEmail, setFormEmail] = useState('')
+  const [formRole, setFormRole] = useState<'coordenador' | 'corretor'>('corretor')
   const [inviting, setInviting] = useState(false)
   const [inviteResult, setInviteResult] = useState<{
     tipo: 'adicionado' | 'convite'
@@ -126,6 +127,7 @@ export default function EquipePage() {
 
   function openInviteDialog() {
     setFormEmail('')
+    setFormRole('corretor')
     setInviteResult(null)
     setInviteOpen(true)
   }
@@ -144,6 +146,7 @@ export default function EquipePage() {
         body: JSON.stringify({
           email: formEmail.trim().toLowerCase(),
           workspaceId,
+          role: formRole,
         }),
       })
 
@@ -272,6 +275,8 @@ export default function EquipePage() {
                     <TableCell>
                       {m.role === 'dono' ? (
                         <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Dono</Badge>
+                      ) : m.role === 'coordenador' ? (
+                        <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Coordenador</Badge>
                       ) : (
                         <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Corretor</Badge>
                       )}
@@ -407,6 +412,19 @@ export default function EquipePage() {
                   placeholder="professor@email.com"
                   onKeyDown={e => e.key === 'Enter' && handleInvite()}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Papel</Label>
+                <select
+                  value={formRole}
+                  onChange={e => setFormRole(e.target.value as 'coordenador' | 'corretor')}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="corretor">Corretor — Corrige provas e vê estatísticas</option>
+                  <option value="coordenador">Coordenador — Cria e edita provas, turmas e disciplinas</option>
+                </select>
+              </div>
+              <div>
                 <p className="text-[11px] text-gray-400">
                   Se o professor já tiver conta, será adicionado direto. Se não, um link de convite será gerado.
                 </p>
