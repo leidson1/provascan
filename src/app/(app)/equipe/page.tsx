@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
-import { UserPlus, Trash2, Users, Copy, Loader2, RefreshCw } from 'lucide-react'
+import { UserPlus, Trash2, Users, Copy, Loader2, Mail, Link2, Clock, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,28 +27,33 @@ interface Member {
   profile: { nome: string; email: string }
 }
 
+interface Convite {
+  id: number
+  email: string
+  token: string
+  usado: boolean
+  created_at: string
+}
+
 export default function EquipePage() {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const { workspaceId, role } = useWorkspace()
 
   const [members, setMembers] = useState<Member[]>([])
+  const [convites, setConvites] = useState<Convite[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Create dialog
-  const [createOpen, setCreateOpen] = useState(false)
-  const [formNome, setFormNome] = useState('')
+  // Invite dialog
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [formEmail, setFormEmail] = useState('')
-  const [formToken, setFormToken] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [createdUser, setCreatedUser] = useState<{ nome: string; email: string; token: string } | null>(null)
-
-  function gerarToken() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-    let token = ''
-    for (let i = 0; i < 8; i++) token += chars[Math.floor(Math.random() * chars.length)]
-    return token
-  }
+  const [inviting, setInviting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{
+    tipo: 'adicionado' | 'convite'
+    nome?: string
+    email?: string
+    link?: string
+  } | null>(null)
 
   // Remove dialog
   const [removeOpen, setRemoveOpen] = useState(false)
@@ -61,7 +66,6 @@ export default function EquipePage() {
 
   const fetchMembers = useCallback(async () => {
     try {
-      // Try join first
       const { data, error } = await supabase
         .from('workspace_members')
         .select('*, profile:profiles(nome, email)')
@@ -69,69 +73,76 @@ export default function EquipePage() {
 
       if (!error && data) {
         setMembers((data as unknown as Member[]) || [])
-        setLoading(false)
-        return
+      } else {
+        // Fallback
+        const { data: membersData } = await supabase
+          .from('workspace_members')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+
+        if (membersData && membersData.length > 0) {
+          const userIds = membersData.map((m: { user_id: string }) => m.user_id)
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, nome, email')
+            .in('id', userIds)
+
+          const profileMap = new Map((profiles || []).map((p: { id: string; nome: string; email: string }) => [p.id, p]))
+          const merged = membersData.map((m: { user_id: string }) => ({
+            ...m,
+            profile: profileMap.get(m.user_id) || { nome: 'Sem nome', email: m.user_id },
+          })) as unknown as Member[]
+          setMembers(merged)
+        } else {
+          setMembers([])
+        }
       }
-
-      // Fallback: fetch members then profiles separately
-      const { data: membersData } = await supabase
-        .from('workspace_members')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-
-      if (!membersData || membersData.length === 0) {
-        setMembers([])
-        setLoading(false)
-        return
-      }
-
-      const userIds = membersData.map((m: { user_id: string }) => m.user_id)
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, nome, email')
-        .in('id', userIds)
-
-      const profileMap = new Map((profiles || []).map((p: { id: string; nome: string; email: string }) => [p.id, p]))
-      const merged = membersData.map((m: { user_id: string }) => ({
-        ...m,
-        profile: profileMap.get(m.user_id) || { nome: 'Sem nome', email: m.user_id },
-      })) as unknown as Member[]
-
-      setMembers(merged)
     } catch {
       toast.error('Erro ao carregar equipe')
-    } finally {
-      setLoading(false)
+    }
+  }, [supabase, workspaceId])
+
+  const fetchConvites = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('convites')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('usado', false)
+        .order('created_at', { ascending: false })
+
+      setConvites((data as Convite[]) || [])
+    } catch {
+      // tabela pode não existir ainda
+      setConvites([])
     }
   }, [supabase, workspaceId])
 
   useEffect(() => {
-    if (role === 'dono') fetchMembers()
-  }, [fetchMembers, role])
+    if (role === 'dono') {
+      Promise.all([fetchMembers(), fetchConvites()]).finally(() => setLoading(false))
+    }
+  }, [fetchMembers, fetchConvites, role])
 
-  function openCreateDialog() {
-    setFormNome('')
+  function openInviteDialog() {
     setFormEmail('')
-    setFormToken(gerarToken())
-    setCreatedUser(null)
-    setCreateOpen(true)
+    setInviteResult(null)
+    setInviteOpen(true)
   }
 
-  async function handleCreate() {
-    if (!formNome.trim() || !formEmail.trim()) {
-      toast.error('Preencha nome e email')
+  async function handleInvite() {
+    if (!formEmail.trim()) {
+      toast.error('Preencha o email')
       return
     }
 
-    setCreating(true)
+    setInviting(true)
     try {
-      const res = await fetch('/api/criar-corretor', {
+      const res = await fetch('/api/convidar-corretor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nome: formNome.trim(),
           email: formEmail.trim().toLowerCase(),
-          senha: formToken,
           workspaceId,
         }),
       })
@@ -139,30 +150,50 @@ export default function EquipePage() {
       const data = await res.json()
 
       if (!res.ok) {
-        toast.error(data.error || 'Erro ao criar corretor')
+        toast.error(data.error || 'Erro ao convidar')
         return
       }
 
-      // Show success with credentials
-      setCreatedUser({
-        nome: formNome.trim(),
-        email: formEmail.trim().toLowerCase(),
-        token: formToken,
+      setInviteResult({
+        tipo: data.tipo,
+        nome: data.user?.nome,
+        email: data.user?.email || formEmail.trim().toLowerCase(),
+        link: data.link,
       })
-      toast.success('Corretor criado com sucesso!')
+
+      if (data.tipo === 'adicionado') {
+        toast.success('Professor adicionado com sucesso!')
+      } else {
+        toast.success('Convite gerado!')
+      }
+
       fetchMembers()
+      fetchConvites()
     } catch {
       toast.error('Erro de conexão')
     } finally {
-      setCreating(false)
+      setInviting(false)
     }
   }
 
-  function copyCredentials() {
-    if (!createdUser) return
-    const text = `ProvaScan - Dados de Acesso\nNome: ${createdUser.nome}\nEmail: ${createdUser.email}\nSenha: ${createdUser.token}\nAcesse: ${window.location.origin}/login`
+  function copyInviteLink(link: string) {
+    const text = `Olá! Estou te convidando para corrigir provas no ProvaScan.\n\nClique no link abaixo para criar sua conta e entrar na equipe:\n${link}`
     navigator.clipboard.writeText(text)
-    toast.success('Dados copiados! Cole no WhatsApp ou onde preferir.')
+    toast.success('Link copiado! Cole no WhatsApp.')
+  }
+
+  async function cancelConvite(id: number) {
+    const { error } = await supabase
+      .from('convites')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      toast.error('Erro ao cancelar convite')
+      return
+    }
+    toast.success('Convite cancelado')
+    fetchConvites()
   }
 
   async function handleRemove() {
@@ -193,11 +224,11 @@ export default function EquipePage() {
             <h1 className="text-2xl font-bold text-gray-900">Equipe</h1>
             {!loading && <Badge variant="secondary">{members.length}</Badge>}
           </div>
-          <p className="mt-1 text-sm text-gray-500">Crie logins para os professores corretores</p>
+          <p className="mt-1 text-sm text-gray-500">Convide professores para corrigir provas</p>
         </div>
-        <Button onClick={openCreateDialog} className="gap-2">
+        <Button onClick={openInviteDialog} className="gap-2">
           <UserPlus className="h-4 w-4" />
-          Novo Corretor
+          Convidar
         </Button>
       </div>
 
@@ -212,9 +243,9 @@ export default function EquipePage() {
         <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-16">
           <Users className="h-12 w-12 text-gray-300" />
           <p className="mt-4 text-sm font-medium text-gray-900">Nenhum membro na equipe</p>
-          <p className="mt-1 text-sm text-gray-500">Crie um login para o primeiro corretor</p>
-          <Button onClick={openCreateDialog} variant="outline" className="mt-4 gap-2">
-            <UserPlus className="h-4 w-4" /> Novo Corretor
+          <p className="mt-1 text-sm text-gray-500">Convide o primeiro professor corretor</p>
+          <Button onClick={openInviteDialog} variant="outline" className="mt-4 gap-2">
+            <UserPlus className="h-4 w-4" /> Convidar
           </Button>
         </div>
       ) : (
@@ -263,74 +294,128 @@ export default function EquipePage() {
         </Card>
       )}
 
-      {/* ── Create Corretor Dialog ── */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      {/* Convites pendentes */}
+      {convites.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-amber-500" />
+              Convites Pendentes
+            </CardTitle>
+            <CardDescription>Aguardando cadastro</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {convites.map(c => (
+                <div key={c.id} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                    <span className="text-sm text-gray-700">{c.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs"
+                      onClick={() => copyInviteLink(`${window.location.origin}/signup?convite=${c.token}`)}
+                    >
+                      <Copy className="h-3 w-3" /> Copiar Link
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-500 hover:text-red-700"
+                      onClick={() => cancelConvite(c.id)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Invite Dialog ── */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{createdUser ? 'Corretor Criado!' : 'Novo Corretor'}</DialogTitle>
+            <DialogTitle>{inviteResult ? (inviteResult.tipo === 'adicionado' ? 'Professor Adicionado!' : 'Convite Gerado!') : 'Convidar Professor'}</DialogTitle>
             <DialogDescription>
-              {createdUser
-                ? 'Passe os dados abaixo para o professor.'
-                : 'Crie um login e senha para o corretor. Ele usará esses dados para entrar.'}
+              {inviteResult
+                ? (inviteResult.tipo === 'adicionado'
+                  ? 'O professor já tinha conta e foi adicionado à equipe.'
+                  : 'Envie o link abaixo por WhatsApp para o professor.')
+                : 'Digite o email do professor que deseja convidar.'}
             </DialogDescription>
           </DialogHeader>
 
-          {createdUser ? (
-            /* ── Success: show credentials ── */
-            <div className="space-y-4">
-              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 space-y-3">
-                <div>
-                  <span className="text-xs font-medium text-emerald-600">Nome</span>
-                  <p className="text-sm font-semibold text-gray-900">{createdUser.nome}</p>
+          {inviteResult ? (
+            inviteResult.tipo === 'adicionado' ? (
+              /* ── Adicionado direto ── */
+              <div className="space-y-4">
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-center">
+                  <p className="text-sm text-emerald-700">
+                    <strong>{inviteResult.nome || inviteResult.email}</strong> foi adicionado(a) como corretor(a).
+                    Ele(a) verá este workspace na próxima vez que entrar no ProvaScan.
+                  </p>
                 </div>
-                <div>
-                  <span className="text-xs font-medium text-emerald-600">Email</span>
-                  <p className="text-sm font-semibold text-gray-900">{createdUser.email}</p>
-                </div>
-                <div>
-                  <span className="text-xs font-medium text-emerald-600">Senha (token)</span>
-                  <p className="text-sm font-semibold text-gray-900 font-mono">{createdUser.token}</p>
-                </div>
-                <div>
-                  <span className="text-xs font-medium text-emerald-600">Link de acesso</span>
-                  <p className="text-sm text-gray-700">{typeof window !== 'undefined' ? `${window.location.origin}/login` : '/login'}</p>
-                </div>
+                <DialogFooter>
+                  <Button onClick={() => setInviteOpen(false)} className="w-full">Fechar</Button>
+                </DialogFooter>
               </div>
-              <Button onClick={copyCredentials} variant="outline" className="w-full gap-2">
-                <Copy className="h-4 w-4" />
-                Copiar dados para enviar
-              </Button>
-              <DialogFooter>
-                <Button onClick={() => setCreateOpen(false)} className="w-full">Fechar</Button>
-              </DialogFooter>
-            </div>
+            ) : (
+              /* ── Link de convite ── */
+              <div className="space-y-4">
+                <div className="rounded-xl bg-blue-50 border border-blue-200 p-4 space-y-3">
+                  <div>
+                    <span className="text-xs font-medium text-blue-600">Email convidado</span>
+                    <p className="text-sm font-semibold text-gray-900">{inviteResult.email}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-blue-600">Link de cadastro</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 rounded-md bg-white border px-3 py-2 text-xs text-gray-600 font-mono truncate">
+                        {inviteResult.link}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => copyInviteLink(inviteResult.link!)}
+                  variant="outline"
+                  className="w-full gap-2"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Copiar convite para WhatsApp
+                </Button>
+                <DialogFooter>
+                  <Button onClick={() => setInviteOpen(false)} className="w-full">Fechar</Button>
+                </DialogFooter>
+              </div>
+            )
           ) : (
-            /* ── Form: create corretor ── */
+            /* ── Formulário ── */
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Nome completo</Label>
-                <Input value={formNome} onChange={e => setFormNome(e.target.value)} placeholder="Maria da Silva" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Email</Label>
-                <Input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="maria@email.com" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Senha (token gerado)</Label>
-                <div className="flex gap-2">
-                  <Input value={formToken} readOnly className="font-mono bg-gray-50" />
-                  <Button type="button" variant="outline" size="sm" onClick={() => setFormToken(gerarToken())}
-                    className="shrink-0 gap-1.5 h-9 px-3" title="Gerar novo token">
-                    <RefreshCw className="h-3.5 w-3.5" /> Novo
-                  </Button>
-                </div>
-                <p className="text-[10px] text-gray-400">Token gerado automaticamente. Clique em &quot;Novo&quot; para gerar outro.</p>
+                <Label>Email do professor</Label>
+                <Input
+                  type="email"
+                  value={formEmail}
+                  onChange={e => setFormEmail(e.target.value)}
+                  placeholder="professor@email.com"
+                  onKeyDown={e => e.key === 'Enter' && handleInvite()}
+                />
+                <p className="text-[11px] text-gray-400">
+                  Se o professor já tiver conta, será adicionado direto. Se não, um link de convite será gerado.
+                </p>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-                <Button onClick={handleCreate} disabled={creating} className="gap-2">
-                  {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                  {creating ? 'Criando...' : 'Criar Corretor'}
+                <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancelar</Button>
+                <Button onClick={handleInvite} disabled={inviting} className="gap-2">
+                  {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  {inviting ? 'Enviando...' : 'Convidar'}
                 </Button>
               </DialogFooter>
             </div>

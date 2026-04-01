@@ -12,11 +12,14 @@ interface WorkspaceContextType {
   switchWorkspace: (id: number) => void
   leaveWorkspace: (wsId: number) => Promise<boolean>
   refreshWorkspace: () => Promise<void>
+  newWorkspacesCount: number
+  markAllSeen: () => void
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | null>(null)
 
 const STORAGE_KEY = 'provascan_workspace_id'
+const SEEN_KEY = 'provascan_seen_workspaces'
 
 interface Props {
   userId: string
@@ -92,6 +95,22 @@ export function WorkspaceProvider({ userId, children }: Props) {
     return true
   }, [supabase, userId, memberships, currentWsId, fetchMemberships])
 
+  // Contagem de workspaces novos (não vistos)
+  const newWorkspacesCount = useMemo(() => {
+    if (typeof window === 'undefined') return 0
+    try {
+      const seen: number[] = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')
+      return memberships.filter(m => !seen.includes(m.workspace_id)).length
+    } catch {
+      return 0
+    }
+  }, [memberships])
+
+  const markAllSeen = useCallback(() => {
+    const ids = memberships.map(m => m.workspace_id)
+    localStorage.setItem(SEEN_KEY, JSON.stringify(ids))
+  }, [memberships])
+
   if (loading || !currentWsId) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -113,6 +132,8 @@ export function WorkspaceProvider({ userId, children }: Props) {
         switchWorkspace,
         leaveWorkspace,
         refreshWorkspace: fetchMemberships,
+        newWorkspacesCount,
+        markAllSeen,
       }}
     >
       {children}

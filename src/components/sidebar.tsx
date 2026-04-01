@@ -35,7 +35,7 @@ interface SidebarProps {
 export function SidebarContent({ user, currentPath }: SidebarProps) {
   const router = useRouter()
   const supabase = createClient()
-  const { workspace, memberships, switchWorkspace, leaveWorkspace, workspaceId, role } = useWorkspace()
+  const { workspace, memberships, switchWorkspace, leaveWorkspace, workspaceId, role, newWorkspacesCount, markAllSeen } = useWorkspace()
   const isDono = useIsDono()
   const [wsMenuOpen, setWsMenuOpen] = useState(false)
   const [confirmLeave, setConfirmLeave] = useState<number | null>(null)
@@ -100,9 +100,14 @@ export function SidebarContent({ user, currentPath }: SidebarProps) {
       {/* Workspace switcher */}
       <div className="px-3 pb-3 relative" ref={menuRef}>
         <button
-          onClick={() => { setWsMenuOpen(!wsMenuOpen); setConfirmLeave(null) }}
-          className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15 transition-colors"
+          onClick={() => { setWsMenuOpen(!wsMenuOpen); setConfirmLeave(null); if (!wsMenuOpen) markAllSeen() }}
+          className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15 transition-colors relative"
         >
+          {newWorkspacesCount > 0 && !wsMenuOpen && (
+            <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+              {newWorkspacesCount}
+            </span>
+          )}
           <div className="flex items-center gap-2 min-w-0">
             {role === 'dono' ? (
               <Crown className="h-3.5 w-3.5 text-amber-400 shrink-0" />

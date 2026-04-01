@@ -2,8 +2,9 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,15 +18,39 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Loader2, ScanLine } from "lucide-react";
+import { Loader2, ScanLine, UserPlus } from "lucide-react";
 
-export default function SignUpPage() {
+function SignUpForm() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const conviteToken = searchParams.get("convite");
+
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [conviteInfo, setConviteInfo] = useState<{ email: string } | null>(null);
+
+  // Se tem convite, pré-preencher email
+  useEffect(() => {
+    if (!conviteToken) return;
+    // Buscar info do convite para pré-preencher email
+    const supabase = createClient();
+    supabase
+      .from("convites")
+      .select("email")
+      .eq("token", conviteToken)
+      .eq("usado", false)
+      .maybeSingle()
+      .then(({ data }: { data: { email: string } | null }) => {
+        if (data) {
+          setConviteInfo({ email: data.email });
+          setEmail(data.email);
+        }
+      });
+  }, [conviteToken]);
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
@@ -67,9 +92,33 @@ export default function SignUpPage() {
       return;
     }
 
-    toast.success("Conta criada com sucesso!", {
-      description: "Verifique seu e-mail para confirmar o cadastro.",
-    });
+    // Se tem convite, aceitar automaticamente
+    if (conviteToken) {
+      try {
+        const res = await fetch("/api/aceitar-convite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: conviteToken }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast.success("Conta criada e convite aceito!", {
+            description: "Você já faz parte da equipe.",
+          });
+          router.push("/dashboard");
+          setLoading(false);
+          return;
+        } else {
+          // Convite falhou mas conta foi criada
+          console.error("Erro ao aceitar convite:", data.error);
+        }
+      } catch {
+        console.error("Erro ao aceitar convite");
+      }
+    }
+
+    toast.success("Conta criada com sucesso!");
+    router.push("/dashboard");
     setLoading(false);
   }
 
@@ -80,11 +129,24 @@ export default function SignUpPage() {
           <ScanLine className="h-8 w-8 text-indigo-500" />
           <span className="text-2xl font-bold tracking-tight">ProvaScan</span>
         </div>
-        <CardTitle className="text-xl">Criar conta</CardTitle>
+        <CardTitle className="text-xl">
+          {conviteToken ? "Aceitar Convite" : "Criar conta"}
+        </CardTitle>
         <CardDescription>
-          Preencha os dados abaixo para se cadastrar
+          {conviteToken
+            ? "Crie sua conta para entrar na equipe"
+            : "Preencha os dados abaixo para se cadastrar"}
         </CardDescription>
       </CardHeader>
+
+      {conviteToken && conviteInfo && (
+        <div className="mx-6 mb-2 rounded-lg bg-blue-50 border border-blue-200 p-3 flex items-center gap-2">
+          <UserPlus className="h-4 w-4 text-blue-500 shrink-0" />
+          <p className="text-xs text-blue-700">
+            Você foi convidado(a) para uma equipe no ProvaScan. Crie sua conta para aceitar.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSignUp}>
         <CardContent className="space-y-4">
@@ -164,7 +226,7 @@ export default function SignUpPage() {
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {loading ? "Criando conta..." : "Criar Conta"}
+            {loading ? "Criando conta..." : (conviteToken ? "Criar Conta e Aceitar Convite" : "Criar Conta")}
           </Button>
         </CardContent>
       </form>
@@ -181,5 +243,19 @@ export default function SignUpPage() {
         </p>
       </CardFooter>
     </Card>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={
+      <Card className="w-full max-w-md">
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+        </CardContent>
+      </Card>
+    }>
+      <SignUpForm />
+    </Suspense>
   );
 }
