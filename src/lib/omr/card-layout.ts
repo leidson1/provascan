@@ -42,13 +42,20 @@ export interface BubblePosition {
 }
 
 /**
- * Calcula as posições (em mm) do centro de cada bolha na grade.
- * Retorna array [questão][alternativa] com {cx, cy}.
- * Usado tanto na geração do PDF quanto na leitura OMR.
+ * Calcula a altura dinâmica de cada linha da grade.
+ * Reduz automaticamente quando há muitas questões para caber no cartão.
  */
+export function calcLinhaAltura(nq: number): number {
+  const C = CARTAO
+  const splitAt = nq > 10 ? Math.ceil(nq / 2) : nq
+  const espacoDisponivel = C.instrY - C.gradeY - 8
+  return Math.min(C.linhaAltura, espacoDisponivel / splitAt)
+}
+
 /**
  * Calcula posições de bolhas com suporte a questões mistas (objetiva + discursiva).
  * Questões discursivas têm menos bolhas e são centralizadas no espaço de nalts colunas.
+ * Escalona automaticamente quando há muitas questões.
  */
 export function calcPosicoesBolhasMista(
   nq: number,
@@ -63,6 +70,7 @@ export function calcPosicoesBolhasMista(
   const numCols = nq > 10 ? 2 : 1
   const blocoW = C.numLargura + nalts * C.colunaLargura
   const gapEntreCol = 10
+  const linhaAltura = calcLinhaAltura(nq)
 
   let gradeXStart: number
   if (numCols === 1) {
@@ -80,7 +88,6 @@ export function calcPosicoesBolhasMista(
 
     const alts: BubblePosition[] = []
     if (isDiscursiva) {
-      // Bolhas discursivas: centralizadas no espaço disponível (idêntico ao PDF)
       const numBolhas = criterio
       const totalBolhasWidth = numBolhas * C.colunaLargura
       const availableWidth = nalts * C.colunaLargura
@@ -89,15 +96,14 @@ export function calcPosicoesBolhasMista(
       for (let a = 0; a < numBolhas; a++) {
         alts.push({
           cx: baseX + C.numLargura + offsetX + a * C.colunaLargura + C.colunaLargura / 2,
-          cy: C.gradeY + row * C.linhaAltura + C.linhaAltura / 2,
+          cy: C.gradeY + row * linhaAltura + linhaAltura / 2,
         })
       }
     } else {
-      // Bolhas objetivas: posição normal
       for (let a = 0; a < nalts; a++) {
         alts.push({
           cx: baseX + C.numLargura + a * C.colunaLargura + C.colunaLargura / 2,
-          cy: C.gradeY + row * C.linhaAltura + C.linhaAltura / 2,
+          cy: C.gradeY + row * linhaAltura + linhaAltura / 2,
         })
       }
     }
@@ -112,6 +118,7 @@ export function calcPosicoesBolhas(nq: number, nalts: number): BubblePosition[][
   const numCols = nq > 10 ? 2 : 1
   const blocoW = C.numLargura + nalts * C.colunaLargura
   const gapEntreCol = 10
+  const linhaAltura = calcLinhaAltura(nq)
 
   let gradeXStart: number
   if (numCols === 1) {
@@ -130,7 +137,7 @@ export function calcPosicoesBolhas(nq: number, nalts: number): BubblePosition[][
     for (let a = 0; a < nalts; a++) {
       alts.push({
         cx: baseX + C.numLargura + a * C.colunaLargura + C.colunaLargura / 2,
-        cy: C.gradeY + row * C.linhaAltura + C.linhaAltura / 2,
+        cy: C.gradeY + row * linhaAltura + linhaAltura / 2,
       })
     }
     pos.push(alts)

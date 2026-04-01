@@ -6,7 +6,7 @@
 import jsPDF from 'jspdf'
 // @ts-ignore - qrcode-generator types
 import qrcode from 'qrcode-generator'
-import { CARTAO, calcPosicoesBolhas } from '@/lib/omr/card-layout'
+import { CARTAO, calcPosicoesBolhas, calcLinhaAltura } from '@/lib/omr/card-layout'
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -317,6 +317,11 @@ function desenharCartao(
   const blocoW = C.numLargura + nalts * C.colunaLargura
   const gapEntreCol = 10
 
+  // Escalonamento dinâmico: reduzir tamanhos quando há muitas questões
+  const linhaAltura = calcLinhaAltura(nq)
+  const escala = linhaAltura / C.linhaAltura // fator de escala (1.0 = normal, <1 = compacto)
+  const bolhaRaio = C.bolhaRaio * Math.max(escala, 0.7) // bolha reduz mas não menos que 70%
+
   let gradeXStart: number
   if (numCols === 1) {
     gradeXStart = (C.largura - blocoW) / 2
@@ -331,7 +336,7 @@ function desenharCartao(
     const baseY = yOff + C.gradeY
 
     // Fundo branco puro da área da grade
-    const gridH = (endQ - startQ) * C.linhaAltura
+    const gridH = (endQ - startQ) * linhaAltura
     doc.setFillColor(255, 255, 255)
     doc.rect(baseX, baseY - 6, blocoW, gridH + 6, 'F')
 
@@ -350,10 +355,16 @@ function desenharCartao(
     doc.setLineWidth(0.15)
     doc.line(baseX, baseY, baseX + blocoW, baseY)
 
+    // Tamanhos de fonte escalados
+    const fontNumero = Math.max(5, 7 * escala)
+    const fontPeso = Math.max(3.5, 4.5 * escala)
+    const fontLetra = Math.max(4, 5.5 * escala)
+    const fontValor = Math.max(3, 4 * escala)
+
     // Linhas de questões
     for (let q = startQ; q < endQ; q++) {
       const row = q - startQ
-      const rowY = baseY + row * C.linhaAltura
+      const rowY = baseY + row * linhaAltura
       const isDiscursiva = tipos[q]?.trim() === 'D'
 
       // Número da questão + peso (se disponível)
@@ -361,13 +372,13 @@ function desenharCartao(
       const peso = pesos[q]
       const pesoStr = peso != null && peso > 0 ? ` (${peso % 1 === 0 ? peso.toFixed(0) : peso.toFixed(1)})` : ''
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(7)
+      doc.setFontSize(fontNumero)
       doc.setTextColor(isDiscursiva ? 59 : 140, isDiscursiva ? 130 : 140, isDiscursiva ? 246 : 140)
-      doc.text(qNum, baseX + 1.5, rowY + C.linhaAltura / 2 + 1)
+      doc.text(qNum, baseX + 1.5, rowY + linhaAltura / 2 + 1)
       if (pesoStr) {
-        doc.setFontSize(4.5)
+        doc.setFontSize(fontPeso)
         doc.setTextColor(170)
-        doc.text(pesoStr, baseX + 7, rowY + C.linhaAltura / 2 + 1)
+        doc.text(pesoStr, baseX + 7, rowY + linhaAltura / 2 + 1)
       }
 
       if (isDiscursiva) {
@@ -381,48 +392,48 @@ function desenharCartao(
 
         for (let a = 0; a < numBolhas; a++) {
           const bcx = baseX + C.numLargura + offsetX + a * C.colunaLargura + C.colunaLargura / 2
-          const bcy = rowY + C.linhaAltura / 2
+          const bcy = rowY + linhaAltura / 2
 
           // Bolha: borda azul, fundo branco
           doc.setDrawColor(59, 130, 246)
           doc.setLineWidth(0.5)
           doc.setFillColor(255, 255, 255)
-          doc.circle(bcx, bcy, C.bolhaRaio, 'FD')
+          doc.circle(bcx, bcy, bolhaRaio, 'FD')
 
           // Letra de critério dentro da bolha (centralizada)
           doc.setFont('helvetica', 'normal')
-          doc.setFontSize(5.5)
+          doc.setFontSize(fontLetra)
           doc.setTextColor(147, 197, 253)
           const letraW = doc.getTextWidth(critLetras[a])
-          doc.text(critLetras[a], bcx - letraW / 2, bcy + 1)
+          doc.text(critLetras[a], bcx - letraW / 2, bcy + fontLetra * 0.18)
 
           // Valor real abaixo da bolha (valor do critério × peso da questão)
           const pesoQ = pesos[q] || 1
           const valorReal = critValores[a] * pesoQ
           const valorStr = valorReal % 1 === 0 ? valorReal.toFixed(0) : valorReal.toFixed(1)
-          doc.setFontSize(4)
+          doc.setFontSize(fontValor)
           doc.setTextColor(147, 197, 253)
           const valorW = doc.getTextWidth(valorStr)
-          doc.text(valorStr, bcx - valorW / 2, bcy + C.bolhaRaio + 2.5)
+          doc.text(valorStr, bcx - valorW / 2, bcy + bolhaRaio + 2 * escala + 1)
         }
       } else {
         // Bolhas objetivas normais (A/B/C/D/E)
         for (let a = 0; a < nalts; a++) {
           const bcx = baseX + C.numLargura + a * C.colunaLargura + C.colunaLargura / 2
-          const bcy = rowY + C.linhaAltura / 2
+          const bcy = rowY + linhaAltura / 2
 
           // Bolha: borda preta, fundo branco
           doc.setDrawColor(0)
           doc.setLineWidth(0.5)
           doc.setFillColor(255, 255, 255)
-          doc.circle(bcx, bcy, C.bolhaRaio, 'FD')
+          doc.circle(bcx, bcy, bolhaRaio, 'FD')
 
           // Letra guia dentro da bolha (centralizada)
           doc.setFont('helvetica', 'normal')
-          doc.setFontSize(5.5)
+          doc.setFontSize(fontLetra)
           doc.setTextColor(210)
           const letraW = doc.getTextWidth(letras[a])
-          doc.text(letras[a], bcx - letraW / 2, bcy + 1)
+          doc.text(letras[a], bcx - letraW / 2, bcy + fontLetra * 0.18)
         }
       }
     }
