@@ -38,7 +38,7 @@ interface Convite {
 export default function EquipePage() {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
-  const { workspaceId, role } = useWorkspace()
+  const { workspaceId, role, workspace } = useWorkspace()
 
   const [members, setMembers] = useState<Member[]>([])
   const [convites, setConvites] = useState<Convite[]>([])
@@ -180,7 +180,8 @@ export default function EquipePage() {
   }
 
   function copyInviteLink(link: string) {
-    const text = `Olá! Estou te convidando para corrigir provas no ProvaScan.\n\nClique no link abaixo para criar sua conta e entrar na equipe:\n${link}`
+    const nomeEscola = workspace.nome_instituicao || 'ProvaScan'
+    const text = `Olá! Você foi convidado(a) para a equipe *${nomeEscola}* no ProvaScan.\n\nClique no link abaixo para criar sua conta e entrar na equipe:\n${link}`
     navigator.clipboard.writeText(text)
     toast.success('Link copiado! Cole no WhatsApp.')
   }
@@ -373,31 +374,28 @@ export default function EquipePage() {
             ) : (
               /* ── Link de convite ── */
               <div className="space-y-4">
-                <div className="rounded-xl bg-blue-50 border border-blue-200 p-4 space-y-3">
+                <div className="rounded-xl bg-indigo-50 border border-indigo-200 p-4 space-y-3">
                   <div>
-                    <span className="text-xs font-medium text-blue-600">Email convidado</span>
-                    <p className="text-sm font-semibold text-gray-900">{inviteResult.email}</p>
+                    <span className="text-[11px] font-medium text-indigo-500 uppercase tracking-wide">Email convidado</span>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">{inviteResult.email}</p>
                   </div>
                   <div>
-                    <span className="text-xs font-medium text-blue-600">Link de cadastro</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 rounded-md bg-white border px-3 py-2 text-xs text-gray-600 font-mono truncate">
-                        {inviteResult.link}
-                      </div>
-                    </div>
+                    <span className="text-[11px] font-medium text-indigo-500 uppercase tracking-wide">Link de cadastro</span>
+                    <p className="mt-1 rounded-lg bg-white border border-indigo-100 px-3 py-2.5 text-xs text-gray-600 font-mono break-all select-all">
+                      {inviteResult.link}
+                    </p>
                   </div>
                 </div>
                 <Button
                   onClick={() => copyInviteLink(inviteResult.link!)}
-                  variant="outline"
                   className="w-full gap-2"
                 >
-                  <Link2 className="h-4 w-4" />
+                  <Copy className="h-4 w-4" />
                   Copiar convite para WhatsApp
                 </Button>
-                <DialogFooter>
-                  <Button onClick={() => setInviteOpen(false)} className="w-full">Fechar</Button>
-                </DialogFooter>
+                <Button variant="outline" onClick={() => setInviteOpen(false)} className="w-full">
+                  Fechar
+                </Button>
               </div>
             )
           ) : (
