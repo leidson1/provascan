@@ -71,26 +71,114 @@ function computeScore(
 }
 
 async function resizeImage(file: File, maxSize: number): Promise<HTMLCanvasElement> {
-  // Usar createImageBitmap com imageOrientation para respeitar EXIF
-  // Isso corrige fotos tiradas em paisagem que chegam rotacionadas
-  const bitmap = await createImageBitmap(file, {
-    imageOrientation: 'from-image',
+  // Ler orientação EXIF manualmente para rotacionar se necessário
+  const orientation = await getExifOrientation(file)
+
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      let { width, height } = img
+
+      // Determinar se precisa trocar largura/altura (rotações 90°/270°)
+      const needsSwap = orientation >= 5 && orientation <= 8
+
+      // Redimensionar
+      const srcW = needsSwap ? height : width
+      const srcH = needsSwap ? width : height
+      let dstW = srcW
+      let dstH = srcH
+      if (dstW > maxSize || dstH > maxSize) {
+        const ratio = Math.min(maxSize / dstW, maxSize / dstH)
+        dstW = Math.round(dstW * ratio)
+        dstH = Math.round(dstH * ratio)
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width = dstW
+      canvas.height = dstH
+      const ctx = canvas.getContext('2d')!
+
+      // Aplicar transformação baseada na orientação EXIF
+      // 1=normal, 2=flip-h, 3=180°, 4=flip-v, 5=transpose, 6=90°CW, 7=transverse, 8=90°CCW
+      ctx.save()
+      switch (orientation) {
+        case 2: ctx.translate(dstW, 0); ctx.scale(-1, 1); break
+        case 3: ctx.translate(dstW, dstH); ctx.rotate(Math.PI); break
+        case 4: ctx.translate(0, dstH); ctx.scale(1, -1); break
+        case 5: ctx.translate(dstW, 0); ctx.scale(-1, 1); ctx.translate(dstW, 0); ctx.rotate(Math.PI / 2); break
+        case 6: ctx.translate(dstW, 0); ctx.rotate(Math.PI / 2); break
+        case 7: ctx.translate(0, dstH); ctx.scale(-1, 1); ctx.translate(0, -dstH); ctx.translate(dstH, 0); ctx.rotate(Math.PI / 2); break
+        case 8: ctx.translate(0, dstH); ctx.rotate(-Math.PI / 2); break
+        default: break // orientation 1 ou desconhecido = sem rotação
+      }
+
+      // Desenhar com dimensões da imagem original (a transformação cuida do resto)
+      if (needsSwap) {
+        ctx.drawImage(img, 0, 0, dstH, dstW)
+      } else {
+        ctx.drawImage(img, 0, 0, dstW, dstH)
+      }
+      ctx.restore()
+
+      URL.revokeObjectURL(img.src)
+      resolve(canvas)
+    }
+    img.onerror = () => reject(new Error('Erro ao carregar imagem'))
+    img.src = URL.createObjectURL(file)
   })
+}
 
-  let { width, height } = bitmap
-  if (width > maxSize || height > maxSize) {
-    const ratio = Math.min(maxSize / width, maxSize / height)
-    width = Math.round(width * ratio)
-    height = Math.round(height * ratio)
+// Ler orientação EXIF de um arquivo JPEG (1-8, default 1)
+async function getExifOrientation(file: File): Promise<number> {
+  try {
+    const buffer = await file.slice(0, 65536).arrayBuffer()
+    const view = new DataView(buffer)
+
+    // Verificar se é JPEG (SOI marker)
+    if (view.getUint16(0) !== 0xFFD8) return 1
+
+    let offset = 2
+    while (offset < view.byteLength - 2) {
+      const marker = view.getUint16(offset)
+      offset += 2
+
+      if (marker === 0xFFE1) {
+        // APP1 (EXIF)
+        const length = view.getUint16(offset)
+        offset += 2
+
+        // Verificar "Exif\0\0"
+        if (view.getUint32(offset) !== 0x45786966) return 1
+        offset += 6
+
+        const tiffStart = offset
+        const bigEndian = view.getUint16(tiffStart) === 0x4D4D
+
+        const ifdOffset = view.getUint32(tiffStart + 4, !bigEndian)
+        const numEntries = view.getUint16(tiffStart + ifdOffset, !bigEndian)
+
+        for (let i = 0; i < numEntries; i++) {
+          const entryOffset = tiffStart + ifdOffset + 2 + i * 12
+          if (entryOffset + 12 > view.byteLength) break
+          const tag = view.getUint16(entryOffset, !bigEndian)
+          if (tag === 0x0112) {
+            // Tag 0x0112 = Orientation
+            return view.getUint16(entryOffset + 8, !bigEndian)
+          }
+        }
+
+        return 1
+      } else if ((marker & 0xFF00) === 0xFF00) {
+        // Pular segmento
+        offset += view.getUint16(offset)
+      } else {
+        break
+      }
+    }
+  } catch {
+    // Falha ao ler EXIF, assumir orientação normal
   }
-
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(bitmap, 0, 0, width, height)
-  bitmap.close()
-  return canvas
+  return 1
 }
 
 // ── Wrapper with Suspense ────────────────────────────────────────
