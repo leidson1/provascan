@@ -443,10 +443,6 @@ function gerarRelatorioPorAluno(data: ReportData, filters: ReportFilters, format
 
 // ─── Main Export ───────────────────────────────────────────────────
 export function gerarRelatorio(data: ReportData, filters: ReportFilters, format: ReportFormat) {
-  // Normalize "all" placeholders to empty string
-  if (filters.turmaId === '__all__') filters.turmaId = ''
-  if (filters.disciplinaId === '__all__') filters.disciplinaId = ''
-
   switch (filters.tipo) {
     case 'turma':
       return gerarRelatorioPorTurma(data, filters, format)

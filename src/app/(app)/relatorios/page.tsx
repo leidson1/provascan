@@ -7,9 +7,7 @@ import {
   FileBarChart,
   FileSpreadsheet,
   FileText,
-  Download,
   Users,
-  BookOpen,
   ClipboardList,
   User,
   Loader2,
@@ -23,13 +21,6 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   gerarRelatorio,
   type ReportData,
@@ -251,40 +242,36 @@ export default function RelatoriosPage() {
                 <Label className="text-sm font-medium">
                   Turma {(tipo === 'turma' || tipo === 'aluno') && <span className="text-red-500">*</span>}
                 </Label>
-                <Select value={turmaId} onValueChange={(v) => v !== null && setTurmaId(v ?? '')}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a turma" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tipo === 'prova' && (
-                      <SelectItem value="__all__">Todas as turmas</SelectItem>
-                    )}
-                    {turmas.map(t => (
-                      <SelectItem key={t.id} value={String(t.id)}>
-                        {t.serie} {t.turma} {t.turno ? `(${t.turno})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <select
+                  value={turmaId}
+                  onChange={(e) => setTurmaId(e.target.value)}
+                  className="flex h-9 w-full items-center rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+                >
+                  <option value="">{tipo === 'prova' ? 'Todas as turmas' : 'Selecione a turma'}</option>
+                  {turmas.map(t => (
+                    <option key={t.id} value={String(t.id)}>
+                      {t.serie} {t.turma} {t.turno ? `(${t.turno})` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
             {/* Disciplina - optional filter */}
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">Disciplina</Label>
-              <Select value={disciplinaId} onValueChange={(v) => v !== null && setDisciplinaId(v ?? '')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todas as disciplinas</SelectItem>
-                  {disciplinas.map(d => (
-                    <SelectItem key={d.id} value={String(d.id)}>
-                      {d.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <select
+                value={disciplinaId}
+                onChange={(e) => setDisciplinaId(e.target.value)}
+                className="flex h-9 w-full items-center rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+              >
+                <option value="">Todas as disciplinas</option>
+                {disciplinas.map(d => (
+                  <option key={d.id} value={String(d.id)}>
+                    {d.nome}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Prova - required for prova report */}
@@ -293,26 +280,20 @@ export default function RelatoriosPage() {
                 <Label className="text-sm font-medium">
                   Prova <span className="text-red-500">*</span>
                 </Label>
-                <Select value={provaId} onValueChange={(v) => v !== null && setProvaId(v ?? '')}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a prova" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {provasFiltradas.length === 0 ? (
-                      <SelectItem value="__none__" disabled>
-                        Nenhuma prova encontrada
-                      </SelectItem>
-                    ) : (
-                      provasFiltradas.map(p => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          #{p.id} — {p.bloco || p.disciplina?.nome || 'Prova'}{' '}
-                          {p.turma ? `(${p.turma.serie} ${p.turma.turma})` : ''}{' '}
-                          {p.data ? `— ${new Date(p.data + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <select
+                  value={provaId}
+                  onChange={(e) => setProvaId(e.target.value)}
+                  className="flex h-9 w-full items-center rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+                >
+                  <option value="">Selecione a prova</option>
+                  {provasFiltradas.map(p => (
+                    <option key={p.id} value={String(p.id)}>
+                      #{p.id} — {p.bloco || p.disciplina?.nome || 'Prova'}{' '}
+                      {p.turma ? `(${p.turma.serie} ${p.turma.turma})` : ''}{' '}
+                      {p.data ? `— ${new Date(p.data + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </div>
