@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-const TUTORIAL_VERSION = '2'
+const TUTORIAL_VERSION = '3'
 const STORAGE_KEY = 'provascan_tutorial_seen'
 
 interface TutorialSlide {
@@ -66,16 +66,16 @@ const slides: TutorialSlide[] = [
   },
   {
     titulo: 'Novidades',
-    descricao: 'Atualizações recentes do ProvaScan.',
+    descricao: 'Últimas atualizações do ProvaScan.',
     icon: <Sparkles className="h-10 w-10" />,
     cor: 'from-purple-500 to-pink-600',
     itens: [
-      { icon: <Sparkles className="h-4 w-4" />, texto: 'Sistema de convites por link (envie pelo WhatsApp)' },
-      { icon: <Sparkles className="h-4 w-4" />, texto: 'Papéis: Dono, Coordenador e Corretor com permissões' },
-      { icon: <Sparkles className="h-4 w-4" />, texto: 'Correção de questões discursivas pela câmera (C/P/E)' },
-      { icon: <Sparkles className="h-4 w-4" />, texto: 'Peso das questões visível nos cartões-resposta' },
-      { icon: <Sparkles className="h-4 w-4" />, texto: 'Nome da instituição na capa e cartões do PDF' },
-      { icon: <Sparkles className="h-4 w-4" />, texto: 'Ordenação por clique nas tabelas de provas, turmas e disciplinas' },
+      { icon: <Sparkles className="h-4 w-4" />, texto: 'Relatórios em PDF e Excel (por turma, por prova e boletim individual)' },
+      { icon: <Sparkles className="h-4 w-4" />, texto: 'Correção manual agora registra a letra marcada pelo aluno (A-E)' },
+      { icon: <Sparkles className="h-4 w-4" />, texto: 'Legenda visual para questões discursivas na correção' },
+      { icon: <Sparkles className="h-4 w-4" />, texto: 'Presença agora mostra P (verde) em vez de asterisco' },
+      { icon: <Sparkles className="h-4 w-4" />, texto: 'Página de Ajuda com perguntas frequentes e tutorial' },
+      { icon: <Sparkles className="h-4 w-4" />, texto: 'Correções de texto e acentuação em toda a câmera' },
     ],
   },
 ]

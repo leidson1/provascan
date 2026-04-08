@@ -19,6 +19,7 @@ import {
   Crown,
   UserCheck,
   FileBarChart,
+  HelpCircle,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { createClient } from '@/lib/supabase/client'
@@ -84,6 +85,7 @@ export function SidebarContent({ user, currentPath }: SidebarProps) {
     { href: '/relatorios', label: 'Relatórios', icon: FileBarChart, visible: isGestor },
     { href: '/equipe', label: 'Equipe', icon: UserPlus, visible: isDono },
     { href: '/configuracoes', label: 'Configurações', icon: Settings, visible: isDono },
+    { href: '/ajuda', label: 'Ajuda', icon: HelpCircle, visible: true },
   ]
 
   const currentWsName = workspace.nome_instituicao || workspace.nome || 'Workspace'
