@@ -828,9 +828,9 @@ function CameraPage() {
             <div className="bg-slate-800 rounded-xl p-4 mt-2 text-center">
               <div className="text-4xl mb-2">&#128247;</div>
               <p className="text-xs text-slate-400 mb-4">
-                Fotografe o cartao de resposta do aluno.
+                Fotografe o cartão de resposta do aluno.
                 <br />
-                Enquadre todo o cartao com boa iluminacao.
+                Enquadre todo o cartão com boa iluminação.
               </p>
 
               {/* File input trigger */}
@@ -855,7 +855,7 @@ function CameraPage() {
                     </>
                   ) : (
                     <>
-                      <span>&#128248;</span> Fotografar Cartao
+                      <span>&#128248;</span> Fotografar Cartão
                     </>
                   )}
                 </div>
