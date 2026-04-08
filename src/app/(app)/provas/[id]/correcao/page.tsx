@@ -17,9 +17,11 @@ import { CorrectionGrid } from '@/components/correction-grid'
 import type { Prova, Aluno, Resultado } from '@/types/database'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
 
+const LETRAS = ['A', 'B', 'C', 'D', 'E']
+
 type DadosAluno = {
   presenca: string
-  questoes: Record<string, number>
+  questoes: Record<string, number | string>
   acertos: number
   percentual: number
   nota: number | null
@@ -45,41 +47,51 @@ export default function CorrecaoPage() {
     ? prova.tipos_questoes.split(',')
     : []
 
+  // Resolve a question value to a score (0 or 1 for objective, 0-1 for discursive)
+  const resolveScore = useCallback(
+    (val: number | string | undefined, gabLetra: string, tipo: string): number => {
+      if (val === undefined) return 0
+      // Discursive: always a number (0, 0.5, 0.75, 1.0)
+      if (tipo === 'D' && typeof val === 'number') return val
+      // Objective: new format — answer letter as string
+      if (typeof val === 'string') return val === gabLetra ? 1 : 0
+      // Legacy format: 0/1
+      return val
+    },
+    []
+  )
+
   // Calculate acertos for a student
   const calcularAcertos = useCallback(
-    (questoes: Record<string, number>, gabaritoArr: string[], modoAnulacao?: string) => {
+    (questoes: Record<string, number | string>, gabaritoArr: string[], modoAnulacao?: string, tiposArr?: string[]) => {
       let acertos = 0
       const numAnuladas = gabaritoArr.filter(g => g === 'X').length
       const numValidas = gabaritoArr.length - numAnuladas
 
       if (modoAnulacao === 'redistribuir') {
-        // Redistribuir: ignora questões anuladas, calcula sobre as válidas
-        // e depois escala para o total de questões
         for (let i = 0; i < gabaritoArr.length; i++) {
           const key = `q${i + 1}`
-          if (gabaritoArr[i] === 'X') continue // ignora anuladas
-          if (questoes[key] !== undefined) {
-            acertos += questoes[key]
-          }
+          if (gabaritoArr[i] === 'X') continue
+          const tipo = tiposArr?.[i] || 'O'
+          acertos += resolveScore(questoes[key], gabaritoArr[i], tipo)
         }
-        // Escala: se tinha 10 questões e 2 anuladas, os acertos nas 8 são escalados para 10
         if (numValidas > 0 && numValidas < gabaritoArr.length) {
           acertos = (acertos / numValidas) * gabaritoArr.length
         }
       } else {
-        // Contar como certa: anulada = 1 ponto automático
         for (let i = 0; i < gabaritoArr.length; i++) {
           const key = `q${i + 1}`
           if (gabaritoArr[i] === 'X') {
-            acertos++ // ponto automático
-          } else if (questoes[key] !== undefined) {
-            acertos += questoes[key]
+            acertos++
+          } else {
+            const tipo = tiposArr?.[i] || 'O'
+            acertos += resolveScore(questoes[key], gabaritoArr[i], tipo)
           }
         }
       }
       return Math.round(acertos * 100) / 100
     },
-    []
+    [resolveScore]
   )
 
   const calcularNota = useCallback(
@@ -87,20 +99,20 @@ export default function CorrecaoPage() {
       acertos: number,
       numQuestoes: number,
       prova: Prova,
-      questoes: Record<string, number>
+      questoes: Record<string, number | string>
     ) => {
       if (prova.modo_avaliacao !== 'nota' || !prova.nota_total) return null
 
       const gabArr = prova.gabarito ? prova.gabarito.split(',') : []
+      const tiposArr = prova.tipos_questoes ? prova.tipos_questoes.split(',') : []
       const modoAnulacao = prova.modo_anulacao || 'contar_certa'
 
       if (prova.pesos_questoes) {
         const pesos = prova.pesos_questoes.split(',').map(Number)
         let nota = 0
-        let pesoTotal = pesos.reduce((s, p) => s + p, 0)
+        const pesoTotal = pesos.reduce((s, p) => s + p, 0)
 
         if (modoAnulacao === 'redistribuir') {
-          // Calcula nota só das válidas, escala proporcionalmente
           let notaValidas = 0
           let pesoValidas = 0
           for (let i = 0; i < numQuestoes; i++) {
@@ -108,32 +120,29 @@ export default function CorrecaoPage() {
             const peso = pesos[i] ?? 1
             if (gabArr[i] === 'X') continue
             pesoValidas += peso
-            if (questoes[key] !== undefined) {
-              notaValidas += questoes[key] * peso
-            }
+            const tipo = tiposArr[i] || 'O'
+            notaValidas += resolveScore(questoes[key], gabArr[i], tipo) * peso
           }
-          // Escala para peso total
           nota = pesoValidas > 0 ? (notaValidas / pesoValidas) * pesoTotal : 0
         } else {
-          // Contar como certa: anulada = peso total
           for (let i = 0; i < numQuestoes; i++) {
             const key = `q${i + 1}`
             const peso = pesos[i] ?? 1
             if (gabArr[i] === 'X') {
               nota += peso
-            } else if (questoes[key] !== undefined) {
-              nota += questoes[key] * peso
+            } else {
+              const tipo = tiposArr[i] || 'O'
+              nota += resolveScore(questoes[key], gabArr[i], tipo) * peso
             }
           }
         }
-        // Normaliza para nota_total
         return Math.round((nota / pesoTotal) * prova.nota_total * 100) / 100
       }
 
       // Sem pesos: usa acertos (já escalado se redistribuir)
       return Math.round((acertos / numQuestoes) * prova.nota_total * 100) / 100
     },
-    []
+    [resolveScore]
   )
 
   useEffect(() => {
@@ -218,7 +227,7 @@ export default function CorrecaoPage() {
 
   function recalcularAluno(
     presenca: string,
-    questoes: Record<string, number>
+    questoes: Record<string, number | string>
   ): DadosAluno {
     if (!prova) return { presenca, questoes, acertos: 0, percentual: 0, nota: null }
 
@@ -234,7 +243,7 @@ export default function CorrecaoPage() {
       return { presenca, questoes, acertos: 0, percentual: 0, nota: null }
     }
 
-    const acertos = calcularAcertos(questoes, gabArr, prova.modo_anulacao)
+    const acertos = calcularAcertos(questoes, gabArr, prova.modo_anulacao, tiposQuestoesArr)
     const percentual =
       prova.num_questoes > 0
         ? Math.round((acertos / prova.num_questoes) * 10000) / 100
@@ -278,21 +287,28 @@ export default function CorrecaoPage() {
       const tipo = tiposQuestoesArr[qIndex] || 'O'
       const key = `q${qIndex + 1}`
       const val = current.questoes[key]
-      let nextVal: number | undefined
+      let nextVal: number | string | undefined
 
       if (tipo === 'O') {
-        // Binary: undefined -> 1 -> 0 -> undefined
-        if (val === undefined) nextVal = 1
-        else if (val === 1) nextVal = 0
-        else nextVal = undefined
+        // Cycle: undefined -> A -> B -> C -> D -> E -> undefined
+        const alternativas = LETRAS.slice(0, prova?.num_alternativas ?? 5)
+        if (val === undefined) {
+          nextVal = alternativas[0] // A
+        } else if (typeof val === 'string') {
+          const idx = alternativas.indexOf(val)
+          nextVal = idx < alternativas.length - 1 ? alternativas[idx + 1] : undefined
+        } else {
+          // Legacy number value (0 or 1) — start fresh cycle
+          nextVal = alternativas[0]
+        }
       } else {
         // Discursive: cycle through criterion values
         const criterios = CRITERIOS_DISCURSIVA[(prova?.criterio_discursiva ?? 3) as 2 | 3 | 4] || CRITERIOS_DISCURSIVA[3]
         const valores: number[] = criterios.map((c) => c.valor as number)
         if (val === undefined) {
-          nextVal = valores[0] // first (highest)
+          nextVal = valores[0]
         } else {
-          const idx = valores.indexOf(val)
+          const idx = valores.indexOf(val as number)
           nextVal = idx < valores.length - 1 ? valores[idx + 1] : undefined
         }
       }

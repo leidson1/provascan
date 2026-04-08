@@ -245,7 +245,12 @@ function gerarRelatorioPorProva(data: ReportData, filters: ReportFilters, format
     const isAnulada = gabarito[i] === 'X'
     if (isAnulada) return { questao: i + 1, percentAcerto: 100, gabarito: 'ANULADA' }
     const total = presentes.length
-    const acertos = presentes.filter(r => r.respostas && r.respostas[key] === 1).length
+    const acertos = presentes.filter(r => {
+      if (!r.respostas) return false
+      const val = r.respostas[key]
+      if (typeof val === 'string') return val === gabarito[i]
+      return val === 1
+    }).length
     return {
       questao: i + 1,
       percentAcerto: total > 0 ? Math.round((acertos / total) * 100) : 0,

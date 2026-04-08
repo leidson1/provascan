@@ -122,7 +122,14 @@ export default function EstatisticasPage() {
 
     const total = presentes.length
     const acertos = presentes.filter(
-      (r) => r.respostas && r.respostas[key] === 1
+      (r) => {
+        if (!r.respostas) return false
+        const val = r.respostas[key]
+        // New format: letter string — compare with gabarito
+        if (typeof val === 'string') return val === gabarito[i]
+        // Legacy format: 1 = correct
+        return val === 1
+      }
     ).length
     return {
       index: i,

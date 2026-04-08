@@ -3,6 +3,8 @@
 import { useCallback, useRef, useEffect } from 'react'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
 
+const LETRAS = ['A', 'B', 'C', 'D', 'E']
+
 interface CorrectionGridProps {
   gabarito: string[]
   numQuestoes: number
@@ -12,7 +14,7 @@ interface CorrectionGridProps {
     number,
     {
       presenca: string
-      questoes: Record<string, number>
+      questoes: Record<string, number | string>
       acertos: number
       percentual: number
     }
@@ -24,15 +26,16 @@ interface CorrectionGridProps {
   criterioDiscursiva?: number
 }
 
-function getDiscursivaStyle(valor: number | undefined) {
-  if (valor === undefined) return 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+function getDiscursivaStyle(valor: number | string | undefined) {
+  if (valor === undefined || typeof valor === 'string') return 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
   if (valor >= 1.0) return 'bg-green-500 text-white border-green-600 hover:bg-green-600'
   if (valor >= 0.75) return 'bg-emerald-400 text-white border-emerald-500 hover:bg-emerald-500'
   if (valor >= 0.5) return 'bg-yellow-400 text-white border-yellow-500 hover:bg-yellow-500'
   return 'bg-red-500 text-white border-red-600 hover:bg-red-600'
 }
 
-function getDiscursivaLabel(valor: number | undefined, criterio: number) {
+function getDiscursivaLabel(valor: number | string | undefined, criterio: number) {
+  if (typeof valor === 'string') return '–'
   const criterios = CRITERIOS_DISCURSIVA[criterio as 2 | 3 | 4]
   const found = criterios?.find((c) => c.valor === valor)
   return found?.label || '–'
@@ -41,6 +44,7 @@ function getDiscursivaLabel(valor: number | undefined, criterio: number) {
 export function CorrectionGrid({
   gabarito,
   numQuestoes,
+  numAlternativas,
   alunos,
   dados,
   onTogglePresenca,
@@ -50,6 +54,7 @@ export function CorrectionGrid({
   criterioDiscursiva = 3,
 }: CorrectionGridProps) {
   const gridRef = useRef<HTMLDivElement>(null)
+  const alternativas = LETRAS.slice(0, numAlternativas)
 
   // Keyboard navigation
   const focusedCell = useRef<{ row: number; col: number }>({ row: 0, col: 0 })
@@ -125,7 +130,34 @@ export function CorrectionGrid({
     }
   }
 
-  function questaoDisplay(value: number | undefined, gabLetra: string) {
+  function questaoDisplay(value: number | string | undefined, gabLetra: string) {
+    // Not answered
+    if (value === undefined) {
+      return {
+        label: '–',
+        className: 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100',
+      }
+    }
+
+    // New format: answer letter stored as string
+    if (typeof value === 'string') {
+      const isCorrect = value === gabLetra
+      const isAnulada = gabLetra === 'X'
+      if (isAnulada) {
+        return {
+          label: value,
+          className: 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200',
+        }
+      }
+      return {
+        label: value,
+        className: isCorrect
+          ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
+          : 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200',
+      }
+    }
+
+    // Legacy format: 1 = correct, 0 = wrong
     if (value === 1)
       return {
         label: gabLetra || '1',
@@ -138,7 +170,7 @@ export function CorrectionGrid({
         className: 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200',
       }
     return {
-      label: '-',
+      label: '–',
       className:
         'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100',
     }

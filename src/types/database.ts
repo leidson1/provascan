@@ -112,7 +112,7 @@ export interface Resultado {
   prova_id: number
   aluno_id: number
   presenca: string | null
-  respostas: Record<string, number> | null
+  respostas: Record<string, number | string> | null
   acertos: number | null
   percentual: number | null
   nota: number | null
