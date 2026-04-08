@@ -115,8 +115,8 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     categoria: 'Equipe',
     icon: Settings,
-    pergunta: 'Posso ter mais de um workspace?',
-    resposta: 'Sim! Cada professor pode ser membro de vários workspaces. Use o seletor no topo do menu lateral para alternar entre eles. Isso é útil quando você trabalha em mais de uma escola.',
+    pergunta: 'Posso participar de mais de um workspace?',
+    resposta: 'Sim! Cada professor pode ser convidado para vários workspaces de diferentes escolas. Use o seletor no topo do menu lateral para alternar entre eles. Ao criar sua conta, um workspace é criado automaticamente para você. Para participar de outros, peça ao dono que envie um convite.',
   },
   // Problemas comuns
   {
