@@ -480,6 +480,54 @@ export default function CorrecaoPage() {
         </CardContent>
       </Card>
 
+      {/* Legenda */}
+      <Card>
+        <CardContent className="py-3 px-4">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="font-semibold text-gray-600">Objetiva:</span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-4 w-4 rounded border border-green-300 bg-green-100" />
+                <span className="text-gray-600">Acertou</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-4 w-4 rounded border border-red-300 bg-red-100" />
+                <span className="text-gray-600">Errou</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-4 w-4 rounded border border-amber-300 bg-amber-100" />
+                <span className="text-gray-600">Anulada</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-4 w-4 rounded border border-gray-200 bg-gray-50" />
+                <span className="text-gray-600">Vazio</span>
+              </span>
+            </div>
+            {prova && (prova.tipo_prova === 'mista' || prova.tipo_prova === 'discursiva') && (
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-gray-600">Discursiva:</span>
+                {(CRITERIOS_DISCURSIVA[(prova.criterio_discursiva ?? 3) as 2 | 3 | 4] || CRITERIOS_DISCURSIVA[3]).map((c) => {
+                  const cores: Record<string, string> = {
+                    green: 'border-green-600 bg-green-500',
+                    emerald: 'border-emerald-500 bg-emerald-400',
+                    yellow: 'border-yellow-500 bg-yellow-400',
+                    red: 'border-red-600 bg-red-500',
+                  }
+                  return (
+                    <span key={c.label} className="flex items-center gap-1.5">
+                      <span className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[9px] font-bold text-white ${cores[c.cor] || 'border-gray-400 bg-gray-400'}`}>
+                        {c.label}
+                      </span>
+                      <span className="text-gray-600">{c.nome}</span>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Grid */}
       <Card>
         <CardContent className="p-2 sm:p-4">

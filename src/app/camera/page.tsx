@@ -359,7 +359,7 @@ function CameraPage() {
       .single()
 
     if (provaError || !provaData) {
-      toast.error('Prova nao encontrada')
+      toast.error('Prova não encontrada')
       setProvasLoading(false)
       return
     }
@@ -400,7 +400,7 @@ function CameraPage() {
     setExistingResults(resultsMap)
     setSessao([])
     setScreen('camera')
-    toast.success('Sessao de correcao iniciada')
+    toast.success('Sessão de correção iniciada')
   }
 
   // ── Handle exam selection ──
@@ -447,7 +447,7 @@ function CameraPage() {
           setManualMode(false)
           setScreen('result')
         } else {
-          setCaptureError('Nao foi possivel ler o cartao. Tente novamente ou corrija manualmente.')
+          setCaptureError('Não foi possível ler o cartão. Tente novamente ou corrija manualmente.')
           offerManualEntry()
         }
       } else {
@@ -631,7 +631,7 @@ function CameraPage() {
         {/* Header */}
         <div className="text-center py-3">
           <h1 className="text-lg font-bold text-indigo-400">ProvaScan Camera</h1>
-          <p className="text-xs text-slate-400">Sistema de Correcao de Provas</p>
+          <p className="text-xs text-slate-400">Sistema de Correção de Provas</p>
         </div>
 
         {/* OMR loading indicator */}
@@ -768,7 +768,7 @@ function CameraPage() {
                   disabled={!selectedProvaId}
                   className="w-full h-14 mt-3 rounded-lg bg-indigo-600 text-white font-semibold text-base hover:bg-indigo-700 active:scale-[0.97] transition-all disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  Iniciar Correcao
+                  Iniciar Correção
                 </button>
               </>
             )}
@@ -851,7 +851,7 @@ function CameraPage() {
                 onClick={offerManualEntry}
                 className="w-full h-12 mt-2 rounded-lg text-indigo-300 text-sm hover:bg-slate-700/50 transition-colors"
               >
-                Correcao Manual
+                Correção Manual
               </button>
 
               {/* Error message */}
@@ -868,7 +868,7 @@ function CameraPage() {
                 onClick={handleEndSession}
                 className="w-full h-14 rounded-lg bg-red-600 text-white font-semibold text-base hover:bg-red-700 active:scale-[0.97] transition-all"
               >
-                Encerrar Sessao
+                Encerrar Sessão
               </button>
             </div>
           </>
@@ -981,20 +981,46 @@ function CameraPage() {
             </div>
 
             <p className="text-center text-[11px] text-slate-500 mt-2 mb-2">
-              Toque em uma questao para corrigir
+              Toque em uma questão para corrigir
             </p>
 
             {/* Legend */}
-            <div className="flex items-center justify-center gap-3 text-[10px] text-slate-400 mb-3">
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-900/50" /> Certo
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-900/50" /> Errado
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-yellow-900/50" /> Anulada
-              </span>
+            <div className="flex flex-col items-center gap-1.5 text-[10px] text-slate-400 mb-3">
+              {/* Legenda objetiva */}
+              <div className="flex items-center gap-3">
+                <span className="text-slate-500 font-medium">Objetiva:</span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-900/50" /> Certo
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-900/50" /> Errado
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-yellow-900/50" /> Anulada
+                </span>
+              </div>
+              {/* Legenda discursiva */}
+              {prova && (prova.tipo_prova === 'mista' || prova.tipo_prova === 'discursiva') && (() => {
+                const crit = prova.criterio_discursiva as 2 | 3 | 4
+                const cores: Record<string, string> = {
+                  green: 'bg-green-500',
+                  emerald: 'bg-emerald-400',
+                  yellow: 'bg-yellow-400',
+                  red: 'bg-red-500',
+                }
+                const criterios = CRITERIOS_DISCURSIVA[crit] || CRITERIOS_DISCURSIVA[3]
+                return (
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-500 font-medium">Discursiva:</span>
+                    {criterios.map((c) => (
+                      <span key={c.label} className="flex items-center gap-1">
+                        <span className={`inline-block w-2.5 h-2.5 rounded-sm ${cores[c.cor] || 'bg-gray-500'}`} />
+                        {c.label} = {c.nome}
+                      </span>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Actions */}
@@ -1016,7 +1042,7 @@ function CameraPage() {
                 disabled={!currentAlunoId}
                 className="flex-1 h-14 rounded-lg bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 active:scale-[0.97] transition-all disabled:opacity-50 disabled:pointer-events-none"
               >
-                Confirmar e Proximo
+                Confirmar e Próximo
               </button>
             </div>
           </div>
@@ -1028,7 +1054,7 @@ function CameraPage() {
         {screen === 'summary' && (
           <div className="bg-slate-800 rounded-xl p-4 mt-2">
             <h2 className="text-base font-semibold text-slate-100 text-center mb-3">
-              Sessao Encerrada
+              Sessão Encerrada
             </h2>
 
             {/* Stats grid */}
@@ -1041,7 +1067,7 @@ function CameraPage() {
                 <div className={`text-xl font-bold ${scoreColor(summaryStats.media)}`}>
                   {summaryStats.total > 0 ? `${summaryStats.media}%` : '-'}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Media</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Média</div>
               </div>
               <div className="bg-slate-900 rounded-lg p-2.5 text-center">
                 <div className={`text-xl font-bold ${scoreColor(summaryStats.max)}`}>
@@ -1075,7 +1101,7 @@ function CameraPage() {
 
             {sessao.length === 0 && (
               <p className="text-center text-sm text-slate-400 py-4">
-                Nenhuma correcao nesta sessao.
+                Nenhuma correção nesta sessão.
               </p>
             )}
 
@@ -1084,7 +1110,7 @@ function CameraPage() {
               onClick={handleNewSession}
               className="w-full h-14 mt-5 rounded-lg bg-indigo-600 text-white font-semibold text-base hover:bg-indigo-700 active:scale-[0.97] transition-all"
             >
-              Nova Sessao
+              Nova Sessão
             </button>
             <a
               href="/dashboard"
