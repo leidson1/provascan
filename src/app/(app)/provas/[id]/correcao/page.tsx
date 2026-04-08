@@ -19,6 +19,10 @@ import { CRITERIOS_DISCURSIVA } from '@/types/database'
 
 const LETRAS = ['A', 'B', 'C', 'D', 'E']
 
+function isPresente(p: string) {
+  return p === 'P' || p === '*'
+}
+
 type DadosAluno = {
   presenca: string
   questoes: Record<string, number | string>
@@ -245,7 +249,7 @@ export default function CorrecaoPage() {
       return { presenca, questoes, acertos: 0, percentual: 0, nota: 0 }
     }
 
-    if (presenca !== '*') {
+    if (!isPresente(presenca)) {
       return { presenca, questoes, acertos: 0, percentual: 0, nota: null }
     }
 
@@ -268,10 +272,10 @@ export default function CorrecaoPage() {
         percentual: 0,
         nota: null,
       }
-      // Cycle: '' -> '*' -> 'F' -> ''
+      // Cycle: '' -> 'P' -> 'F' -> ''
       let next: string
-      if (current.presenca === '') next = '*'
-      else if (current.presenca === '*') next = 'F'
+      if (current.presenca === '') next = 'P'
+      else if (isPresente(current.presenca)) next = 'F'
       else next = ''
 
       const updated = recalcularAluno(next, current.questoes)
@@ -346,7 +350,7 @@ export default function CorrecaoPage() {
 
     // Upsert resultados for each student with presenca marked
     const upserts = Object.entries(dados)
-      .filter(([, d]) => d.presenca === '*' || d.presenca === 'F')
+      .filter(([, d]) => isPresente(d.presenca) || d.presenca === 'F')
       .map(([alunoIdStr, d]) => ({
         user_id: user.id,
         workspace_id: workspaceId,
@@ -382,7 +386,7 @@ export default function CorrecaoPage() {
 
   // Stats
   const presentes = Object.values(dados).filter(
-    (d) => d.presenca === '*'
+    (d) => isPresente(d.presenca)
   ).length
   const faltas = Object.values(dados).filter((d) => d.presenca === 'F').length
   const corrigidos = presentes + faltas
@@ -390,7 +394,7 @@ export default function CorrecaoPage() {
     presentes > 0
       ? Math.round(
           Object.values(dados)
-            .filter((d) => d.presenca === '*')
+            .filter((d) => isPresente(d.presenca))
             .reduce((sum, d) => sum + d.percentual, 0) / presentes
         )
       : 0

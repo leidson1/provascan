@@ -94,7 +94,7 @@ export default function EstatisticasPage() {
     : Array(prova.num_questoes).fill('')
 
   // Filter presentes
-  const presentes = resultados.filter((r) => r.presenca === '*')
+  const presentes = resultados.filter((r) => r.presenca === 'P' || r.presenca === '*')
   const faltas = resultados.filter((r) => r.presenca === 'F')
 
   // Averages

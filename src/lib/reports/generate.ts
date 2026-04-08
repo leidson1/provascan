@@ -150,7 +150,7 @@ function gerarRelatorioPorTurma(data: ReportData, filters: ReportFilters, format
   // Build student summary across all filtered provas
   const resumo = alunosDaTurma.map(aluno => {
     const resultadosAluno = data.resultados.filter(r => r.aluno_id === aluno.id && provasFiltradas.some(p => p.id === r.prova_id))
-    const presentes = resultadosAluno.filter(r => r.presenca === '*')
+    const presentes = resultadosAluno.filter(r => r.presenca === 'P' || r.presenca === '*')
     const faltas = resultadosAluno.filter(r => r.presenca === 'F').length
 
     const mediaPercent = presentes.length > 0
@@ -226,7 +226,7 @@ function gerarRelatorioPorProva(data: ReportData, filters: ReportFilters, format
   const turmaName = prova.turma ? `${prova.turma.serie} ${prova.turma.turma}` : 'Turma'
   const resultadosProva = data.resultados.filter(r => r.prova_id === prova.id)
 
-  const presentes = resultadosProva.filter(r => r.presenca === '*')
+  const presentes = resultadosProva.filter(r => r.presenca === 'P' || r.presenca === '*')
   const faltas = resultadosProva.filter(r => r.presenca === 'F')
 
   const mediaAcertos = presentes.length > 0
@@ -280,7 +280,7 @@ function gerarRelatorioPorProva(data: ReportData, filters: ReportFilters, format
     const colWidths = [12, 70, 22, 22, 28, 28]
 
     const allResults = [...ranking, ...faltas].map((r, idx) => {
-      const isPresente = r.presenca === '*'
+      const isPresente = r.presenca === 'P' || r.presenca === '*'
       return [
         isPresente ? String(idx + 1) : '—',
         r.aluno?.nome ?? `Aluno #${r.aluno_id}`,
@@ -319,15 +319,18 @@ function gerarRelatorioPorProva(data: ReportData, filters: ReportFilters, format
     const wb = XLSX.utils.book_new()
 
     // Sheet 1: Alunos
-    const alunosSheet = XLSX.utils.json_to_sheet([...ranking, ...faltas].map((r, idx) => ({
-      'Posição': r.presenca === '*' ? idx + 1 : '—',
-      'Aluno': r.aluno?.nome ?? `Aluno #${r.aluno_id}`,
-      'Acertos': r.presenca === '*' ? (r.acertos ?? 0) : '—',
-      'Total Questões': prova.num_questoes,
-      'Percentual (%)': r.presenca === '*' ? Math.round(r.percentual ?? 0) : '—',
-      'Nota': r.presenca === '*' && r.nota != null ? r.nota : '—',
-      'Presença': r.presenca === '*' ? 'Presente' : 'Falta',
-    })))
+    const alunosSheet = XLSX.utils.json_to_sheet([...ranking, ...faltas].map((r, idx) => {
+      const pres = r.presenca === 'P' || r.presenca === '*'
+      return {
+        'Posição': pres ? idx + 1 : '—',
+        'Aluno': r.aluno?.nome ?? `Aluno #${r.aluno_id}`,
+        'Acertos': pres ? (r.acertos ?? 0) : '—',
+        'Total Questões': prova.num_questoes,
+        'Percentual (%)': pres ? Math.round(r.percentual ?? 0) : '—',
+        'Nota': pres && r.nota != null ? r.nota : '—',
+        'Presença': pres ? 'Presente' : 'Falta',
+      }
+    }))
     alunosSheet['!cols'] = [{ wch: 10 }, { wch: 35 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 12 }]
     XLSX.utils.book_append_sheet(wb, alunosSheet, 'Alunos')
 
@@ -392,13 +395,14 @@ function gerarRelatorioPorAluno(data: ReportData, filters: ReportFilters, format
 
       const resultadosAluno = provasFiltradas.map(prova => {
         const res = data.resultados.find(r => r.prova_id === prova.id && r.aluno_id === aluno.id)
+        const pres = res?.presenca === 'P' || res?.presenca === '*'
         return {
           prova: prova.bloco || prova.disciplina?.nome || `Prova #${prova.id}`,
           data: formatDate(prova.data),
-          presenca: res?.presenca === '*' ? 'Presente' : res?.presenca === 'F' ? 'Falta' : '—',
-          acertos: res?.presenca === '*' ? `${res.acertos ?? 0}/${prova.num_questoes}` : '—',
-          percentual: res?.presenca === '*' ? `${(res.percentual ?? 0).toFixed(0)}%` : '—',
-          nota: res?.presenca === '*' && res.nota != null ? res.nota.toFixed(1) : '—',
+          presenca: pres ? 'Presente' : res?.presenca === 'F' ? 'Falta' : '—',
+          acertos: pres ? `${res!.acertos ?? 0}/${prova.num_questoes}` : '—',
+          percentual: pres ? `${(res!.percentual ?? 0).toFixed(0)}%` : '—',
+          nota: pres && res!.nota != null ? res!.nota.toFixed(1) : '—',
         }
       })
 
@@ -425,16 +429,17 @@ function gerarRelatorioPorAluno(data: ReportData, filters: ReportFilters, format
     alunosDaTurma.forEach(aluno => {
       provasFiltradas.forEach(prova => {
         const res = data.resultados.find(r => r.prova_id === prova.id && r.aluno_id === aluno.id)
+        const pres = res?.presenca === 'P' || res?.presenca === '*'
         allRows.push({
           'Nº': aluno.numero ?? '',
           'Aluno': aluno.nome,
           'Prova': prova.bloco || prova.disciplina?.nome || `Prova #${prova.id}`,
           'Data': formatDate(prova.data),
-          'Presença': res?.presenca === '*' ? 'Presente' : res?.presenca === 'F' ? 'Falta' : '—',
-          'Acertos': res?.presenca === '*' ? (res.acertos ?? 0) : '—',
+          'Presença': pres ? 'Presente' : res?.presenca === 'F' ? 'Falta' : '—',
+          'Acertos': pres ? (res!.acertos ?? 0) : '—',
           'Total': prova.num_questoes,
-          'Percentual (%)': res?.presenca === '*' ? Math.round(res.percentual ?? 0) : '—',
-          'Nota': res?.presenca === '*' && res.nota != null ? res.nota : '—',
+          'Percentual (%)': pres ? Math.round(res!.percentual ?? 0) : '—',
+          'Nota': pres && res!.nota != null ? res!.nota : '—',
         })
       })
     })

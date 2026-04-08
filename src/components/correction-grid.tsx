@@ -111,10 +111,14 @@ export function CorrectionGrid({
     return () => grid.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
+  function isPresente(presenca: string) {
+    return presenca === 'P' || presenca === '*'
+  }
+
   function presencaDisplay(presenca: string) {
-    if (presenca === '*')
+    if (isPresente(presenca))
       return {
-        label: '*',
+        label: 'P',
         className:
           'bg-green-100 text-green-700 border-green-300 hover:bg-green-200',
       }
@@ -124,7 +128,7 @@ export function CorrectionGrid({
         className: 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200',
       }
     return {
-      label: '-',
+      label: '–',
       className:
         'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100',
     }
@@ -235,6 +239,7 @@ export function CorrectionGrid({
               percentual: 0,
             }
             const isFalta = d.presenca === 'F'
+            const isP = isPresente(d.presenca)
             const pDisplay = presencaDisplay(d.presenca)
 
             return (
@@ -319,7 +324,7 @@ export function CorrectionGrid({
                   )
                 })}
                 <td className="px-2 py-1 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">
-                  {d.presenca === '*'
+                  {isP
                     ? `${d.acertos}/${numQuestoes}`
                     : isFalta
                       ? '0'

@@ -541,7 +541,7 @@ function CameraPage() {
       workspace_id: (prova as any).workspace_id,
       prova_id: prova.id,
       aluno_id: currentAlunoId,
-      presenca: '*',
+      presenca: 'P',
       respostas: respostasObj,
       acertos,
       percentual,
