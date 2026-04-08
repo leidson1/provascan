@@ -507,10 +507,25 @@ function CameraPage() {
     if (!prova || !userId) return
 
     const { acertos, percentual } = currentScore
-    const respostasObj: Record<string, number> = {}
+    const respostasObj: Record<string, number | string> = {}
+    const tipos = prova.tipos_questoes ? prova.tipos_questoes.split(',') : []
+    const criterioMap: Record<number, Record<string, number>> = {
+      2: { C: 1, E: 0 },
+      3: { C: 1, P: 0.5, E: 0 },
+      4: { E: 1, B: 0.75, P: 0.5, I: 0 },
+    }
+    const criterio = prova.criterio_discursiva || 3
     currentRespostas.forEach((r, i) => {
       if (r) {
-        respostasObj[String(i + 1)] = ALTS.indexOf(r.toUpperCase())
+        const isDisc = tipos[i]?.trim() === 'D'
+        if (isDisc) {
+          // Discursiva: store numeric score value
+          const valorMap = criterioMap[criterio] || criterioMap[3]
+          respostasObj[`q${i + 1}`] = valorMap[r.toUpperCase()] ?? 0
+        } else {
+          // Objetiva: store the answer letter
+          respostasObj[`q${i + 1}`] = r.toUpperCase()
+        }
       }
     })
 

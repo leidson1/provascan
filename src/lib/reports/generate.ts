@@ -247,7 +247,8 @@ function gerarRelatorioPorProva(data: ReportData, filters: ReportFilters, format
     const total = presentes.length
     const acertos = presentes.filter(r => {
       if (!r.respostas) return false
-      const val = r.respostas[key]
+      const val = r.respostas[key] ?? r.respostas[String(i + 1)]
+      if (val === undefined) return false
       if (typeof val === 'string') return val === gabarito[i]
       return val === 1
     }).length

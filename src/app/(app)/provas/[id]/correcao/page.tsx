@@ -198,7 +198,13 @@ export default function CorrecaoPage() {
       for (const aluno of alunosList) {
         const resultado = resultadosList.find((r) => r.aluno_id === aluno.id)
         if (resultado) {
-          const questoes = resultado.respostas ?? {}
+          // Normalize respostas keys: "1" -> "q1", and numeric indices -> letters
+          const raw = resultado.respostas ?? {}
+          const questoes: Record<string, number | string> = {}
+          for (const [key, val] of Object.entries(raw)) {
+            const normalizedKey = key.startsWith('q') ? key : `q${key}`
+            questoes[normalizedKey] = val
+          }
           const acertos = resultado.acertos ?? 0
           const percentual = resultado.percentual ?? 0
           dadosInit[aluno.id] = {

@@ -124,7 +124,9 @@ export default function EstatisticasPage() {
     const acertos = presentes.filter(
       (r) => {
         if (!r.respostas) return false
-        const val = r.respostas[key]
+        // Support both "q1" and "1" key formats
+        const val = r.respostas[key] ?? r.respostas[String(i + 1)]
+        if (val === undefined) return false
         // New format: letter string — compare with gabarito
         if (typeof val === 'string') return val === gabarito[i]
         // Legacy format: 1 = correct
