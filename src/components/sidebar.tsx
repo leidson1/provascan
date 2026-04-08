@@ -18,6 +18,7 @@ import {
   LogOut as LeaveIcon,
   Crown,
   UserCheck,
+  FileBarChart,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { createClient } from '@/lib/supabase/client'
@@ -80,6 +81,7 @@ export function SidebarContent({ user, currentPath }: SidebarProps) {
     { href: '/provas', label: 'Provas', icon: FileText, visible: true },
     { href: '/disciplinas', label: 'Disciplinas', icon: BookOpen, visible: isGestor },
     { href: '/turmas', label: 'Turmas', icon: Users, visible: isGestor },
+    { href: '/relatorios', label: 'Relatórios', icon: FileBarChart, visible: isGestor },
     { href: '/equipe', label: 'Equipe', icon: UserPlus, visible: isDono },
     { href: '/configuracoes', label: 'Configurações', icon: Settings, visible: isDono },
   ]
