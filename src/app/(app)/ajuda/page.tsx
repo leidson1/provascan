@@ -85,6 +85,37 @@ const FAQ_ITEMS: FaqItem[] = [
     pergunta: 'Como funciona o peso das questões?',
     resposta: 'Ao criar ou editar a prova, ative o modo de avaliação "Por Nota" e defina o peso de cada questão. O sistema calcula a nota final ponderada automaticamente. Os pesos aparecem no cartão-resposta impresso.',
   },
+  // Questões Discursivas
+  {
+    categoria: 'Questões Discursivas',
+    icon: ClipboardCheck,
+    pergunta: 'Como funcionam as questões discursivas no ProvaScan?',
+    resposta: 'Diferente das objetivas (onde o aluno marca A, B, C, D ou E), nas discursivas é o professor quem avalia e marca o resultado. O aluno responde a questão por escrito na prova, e o professor analisa a resposta e registra no sistema o conceito que considera adequado (Certo, Parcial, Errado, etc).',
+  },
+  {
+    categoria: 'Questões Discursivas',
+    icon: ClipboardCheck,
+    pergunta: 'Quais são os critérios de avaliação das discursivas?',
+    resposta: 'Ao criar a prova, você escolhe entre 3 escalas: (1) Dois níveis — C (Certo, 100%) e E (Errado, 0%). (2) Três níveis — C (Certo, 100%), P (Parcial, 50%) e E (Errado, 0%). (3) Quatro níveis — E (Excelente, 100%), B (Bom, 75%), P (Parcial, 50%) e I (Insuficiente, 0%). Escolha o que melhor se adapta à sua forma de avaliar.',
+  },
+  {
+    categoria: 'Questões Discursivas',
+    icon: FileText,
+    pergunta: 'Qual a melhor forma de organizar uma prova mista?',
+    resposta: 'Dica importante: coloque as questões discursivas no final da prova! Assim, o cartão-resposta fica organizado — as bolhas de múltipla escolha (A-E) ficam primeiro e os critérios discursivos (C/P/E) ficam por último. Isso facilita muito na hora de preencher e corrigir, tanto pela câmera quanto manualmente.',
+  },
+  {
+    categoria: 'Questões Discursivas',
+    icon: Camera,
+    pergunta: 'Como corrigir discursivas pela câmera?',
+    resposta: 'No cartão-resposta impresso, as questões discursivas aparecem com bolinhas azuis (C/P/E ou E/B/P/I). O professor lê a resposta escrita do aluno na prova, decide o conceito e marca a bolinha correspondente no cartão. Depois, basta fotografar o cartão normalmente — o sistema lê tudo junto (objetivas e discursivas).',
+  },
+  {
+    categoria: 'Questões Discursivas',
+    icon: ClipboardCheck,
+    pergunta: 'Posso corrigir discursivas manualmente no sistema?',
+    resposta: 'Sim! Na página de correção da prova, as questões discursivas aparecem com um badge roxo "D" no cabeçalho. Ao clicar na célula, ela cicla pelos conceitos disponíveis (ex: C → P → E). A legenda com as cores e significados aparece acima do grid para facilitar.',
+  },
   // Turmas e Alunos
   {
     categoria: 'Turmas e Alunos',
@@ -109,14 +140,20 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     categoria: 'Equipe',
     icon: UserPlus,
-    pergunta: 'Como convido outros professores?',
-    resposta: 'O dono do workspace pode acessar "Equipe" no menu lateral e enviar convites por link (compartilhável via WhatsApp). Existem três papéis: Dono (acesso total), Coordenador (gerencia provas, turmas e disciplinas) e Corretor (só corrige provas).',
+    pergunta: 'Como convido outras pessoas?',
+    resposta: 'O dono do workspace pode acessar "Equipe" no menu lateral e enviar convites por link (compartilhável via WhatsApp). Existem três papéis: Dono (acesso total), Coordenador (gerencia provas, turmas e disciplinas) e Corretor (só corrige provas). Qualquer pessoa pode ser convidada — basta ter uma conta no ProvaScan.',
+  },
+  {
+    categoria: 'Equipe',
+    icon: Settings,
+    pergunta: 'O que é um workspace?',
+    resposta: 'Workspace é o seu espaço de trabalho. Ao criar sua conta, um workspace é criado automaticamente com o seu nome. Você pode renomeá-lo em Configurações (ex: nome da escola, projeto, etc). Cada workspace tem suas próprias turmas, disciplinas e provas, totalmente independentes.',
   },
   {
     categoria: 'Equipe',
     icon: Settings,
     pergunta: 'Posso participar de mais de um workspace?',
-    resposta: 'Sim! Cada professor pode ser convidado para vários workspaces de diferentes escolas. Use o seletor no topo do menu lateral para alternar entre eles. Ao criar sua conta, um workspace é criado automaticamente para você. Para participar de outros, peça ao dono que envie um convite.',
+    resposta: 'Sim! Você pode ser convidado para os workspaces de outras pessoas. Use o seletor no topo do menu lateral para alternar entre eles. Isso é útil quando você trabalha com diferentes grupos ou em mais de uma escola.',
   },
   // Problemas comuns
   {
