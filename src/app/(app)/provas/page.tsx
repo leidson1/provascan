@@ -7,11 +7,11 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, FileText, MoreVertical, ClipboardCheck, BookOpen,
   BarChart3, CreditCard, Trash2, Pencil, Save, Loader2, CheckCircle2,
-  ArrowUpDown, ArrowUp, ArrowDown
+  ArrowUpDown, ArrowUp, ArrowDown, Copy, RotateCcw
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import { useWorkspace, useIsGestor } from '@/contexts/workspace-context'
+import { useWorkspace, useIsGestor, useIsDono } from '@/contexts/workspace-context'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -46,9 +46,13 @@ interface ProvaRow {
   criterio_discursiva: number
   modo_anulacao: 'contar_certa' | 'redistribuir'
   pesos_questoes: string | null
+  prova_origem_id: number | null
   created_at: string
   disciplina: { nome: string } | null
   turma: { serie: string; turma: string } | null
+  // Computed fields for progress
+  resultados_count?: number
+  alunos_count?: number
 }
 
 function statusBadge(status: string) {
@@ -107,6 +111,7 @@ function ProvasPage() {
   const searchParams = useSearchParams()
   const { workspaceId, role } = useWorkspace()
   const isGestor = useIsGestor()
+  const isDono = useIsDono()
   const isCorretor = !isGestor
 
   const [provas, setProvas] = useState<ProvaRow[]>([])
@@ -122,6 +127,18 @@ function ProvasPage() {
   const [editingProva, setEditingProva] = useState<ProvaRow | null>(null)
   const [gabaritoProva, setGabaritoProva] = useState<ProvaRow | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Duplicate states
+  const [duplicateProva, setDuplicateProva] = useState<ProvaRow | null>(null)
+  const [duplicateTurmas, setDuplicateTurmas] = useState<number[]>([])
+  const [duplicating, setDuplicating] = useState(false)
+
+  // Segunda chamada states
+  type AlunoAusente = { id: number; nome: string; numero: number | null }
+  const [segundaChamadaProva, setSegundaChamadaProva] = useState<ProvaRow | null>(null)
+  const [alunosAusentes, setAlunosAusentes] = useState<AlunoAusente[]>([])
+  const [loadingAusentes, setLoadingAusentes] = useState(false)
+  const [criarSegundaChamada, setCriarSegundaChamada] = useState(false)
 
   // Sort
   const [sortKey, setSortKey] = useState<'data' | 'disciplina' | 'turma' | 'questoes' | 'status'>('data')
@@ -203,9 +220,46 @@ function ProvasPage() {
         .order('serie'),
     ])
 
-    if (provasRes.data) setProvas(provasRes.data as unknown as ProvaRow[])
     if (discRes.data) setDisciplinas(discRes.data)
     if (turmaRes.data) setTurmas(turmaRes.data)
+
+    if (provasRes.data) {
+      const provasList = provasRes.data as unknown as ProvaRow[]
+
+      // Fetch correction progress counts in parallel
+      const [resResultados, resAlunos] = await Promise.all([
+        supabase
+          .from('resultados')
+          .select('prova_id, presenca')
+          .eq('workspace_id', workspaceId)
+          .in('presenca', ['P', '*']),
+        supabase
+          .from('alunos')
+          .select('turma_id')
+          .eq('workspace_id', workspaceId)
+          .eq('ativo', true),
+      ])
+
+      // Count resultados per prova
+      const resCounts: Record<number, number> = {}
+      for (const r of resResultados.data ?? []) {
+        resCounts[r.prova_id] = (resCounts[r.prova_id] || 0) + 1
+      }
+
+      // Count alunos per turma
+      const alunoCounts: Record<number, number> = {}
+      for (const a of resAlunos.data ?? []) {
+        alunoCounts[a.turma_id] = (alunoCounts[a.turma_id] || 0) + 1
+      }
+
+      // Attach counts to provas
+      for (const p of provasList) {
+        p.resultados_count = resCounts[p.id] || 0
+        p.alunos_count = p.turma_id ? (alunoCounts[p.turma_id] || 0) : 0
+      }
+
+      setProvas(provasList)
+    }
     setLoading(false)
   }
 
@@ -302,6 +356,106 @@ function ProvasPage() {
     setDeleteId(null)
   }
 
+  // ── Duplicate prova to multiple turmas ──
+  async function handleDuplicate() {
+    if (!duplicateProva || !userId || duplicateTurmas.length === 0) return
+    setDuplicating(true)
+
+    const inserts = duplicateTurmas.map(turmaId => ({
+      user_id: userId,
+      workspace_id: workspaceId,
+      data: duplicateProva.data || null,
+      disciplina_id: duplicateProva.disciplina_id,
+      turma_id: turmaId,
+      num_questoes: duplicateProva.num_questoes,
+      num_alternativas: duplicateProva.num_alternativas,
+      bloco: duplicateProva.bloco,
+      modo_avaliacao: duplicateProva.modo_avaliacao,
+      nota_total: duplicateProva.nota_total,
+      status: 'aberta' as const,
+      tipo_prova: duplicateProva.tipo_prova,
+      tipos_questoes: duplicateProva.tipos_questoes,
+      criterio_discursiva: duplicateProva.criterio_discursiva,
+      modo_anulacao: duplicateProva.modo_anulacao,
+      gabarito: duplicateProva.gabarito,
+      pesos_questoes: duplicateProva.pesos_questoes,
+    }))
+
+    const { error } = await supabase.from('provas').insert(inserts)
+    if (error) {
+      toast.error('Erro ao duplicar prova')
+    } else {
+      toast.success(`Prova duplicada para ${duplicateTurmas.length} turma(s)!`)
+      setDuplicateProva(null)
+      fetchAll()
+    }
+    setDuplicating(false)
+  }
+
+  // ── Open segunda chamada modal ──
+  async function openSegundaChamada(prova: ProvaRow) {
+    setSegundaChamadaProva(prova)
+    setLoadingAusentes(true)
+    setAlunosAusentes([])
+
+    const { data } = await supabase
+      .from('resultados')
+      .select('aluno_id, presenca, aluno:alunos(id, nome, numero)')
+      .eq('prova_id', prova.id)
+      .eq('presenca', 'F')
+
+    const ausentes: AlunoAusente[] = (data ?? [])
+      .filter((r: { aluno?: { id: number; nome: string; numero: number | null } | null }) => r.aluno)
+      .map((r: { aluno?: { id: number; nome: string; numero: number | null } | null }) => ({
+        id: r.aluno!.id,
+        nome: r.aluno!.nome,
+        numero: r.aluno!.numero,
+      }))
+
+    setAlunosAusentes(ausentes)
+    setLoadingAusentes(false)
+  }
+
+  async function handleSegundaChamada() {
+    if (!segundaChamadaProva || !userId) return
+    setCriarSegundaChamada(true)
+
+    const p = segundaChamadaProva
+    const { data: newProva, error } = await supabase
+      .from('provas')
+      .insert({
+        user_id: userId,
+        workspace_id: workspaceId,
+        data: new Date().toISOString().split('T')[0],
+        disciplina_id: p.disciplina_id,
+        turma_id: p.turma_id,
+        num_questoes: p.num_questoes,
+        num_alternativas: p.num_alternativas,
+        bloco: p.bloco,
+        modo_avaliacao: p.modo_avaliacao,
+        nota_total: p.nota_total,
+        status: 'aberta' as const,
+        tipo_prova: p.tipo_prova,
+        tipos_questoes: p.tipos_questoes,
+        criterio_discursiva: p.criterio_discursiva,
+        modo_anulacao: p.modo_anulacao,
+        gabarito: p.gabarito,
+        pesos_questoes: p.pesos_questoes,
+        prova_origem_id: p.id,
+      })
+      .select('id')
+      .single()
+
+    if (error || !newProva) {
+      toast.error('Erro ao criar segunda chamada')
+    } else {
+      toast.success('Segunda chamada criada!')
+      setSegundaChamadaProva(null)
+      fetchAll()
+    }
+    setCriarSegundaChamada(false)
+  }
+
   // ── Loading ──
   if (loading) {
     return (
@@ -370,6 +524,7 @@ function ProvasPage() {
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('status')}>
                     <span className="inline-flex items-center gap-1">Status <PSortIcon col="status" /></span>
                   </TableHead>
+                  <TableHead className="text-center">Progresso</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -398,7 +553,30 @@ function ProvasPage() {
                         <span className="text-xs text-muted-foreground">Pendente</span>
                       )}
                     </TableCell>
-                    <TableCell>{statusBadge(prova.status)}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5">
+                        {statusBadge(prova.status)}
+                        {prova.prova_origem_id && (
+                          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-[10px]">2a Chamada</Badge>
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {prova.alunos_count ? (
+                        <span className={cn(
+                          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                          prova.resultados_count === prova.alunos_count
+                            ? 'bg-green-100 text-green-700'
+                            : prova.resultados_count
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-gray-100 text-gray-500'
+                        )}>
+                          {prova.resultados_count ?? 0}/{prova.alunos_count}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">&mdash;</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-8 w-8 p-0')}>
@@ -428,6 +606,16 @@ function ProvasPage() {
                             </DropdownMenuItem>
                           )}
                           {!isCorretor && (
+                            <DropdownMenuItem onClick={() => { setDuplicateProva(prova); setDuplicateTurmas([]) }}>
+                              <Copy className="mr-2 h-4 w-4" /> Duplicar para Turmas
+                            </DropdownMenuItem>
+                          )}
+                          {!isCorretor && prova.resultados_count !== undefined && prova.resultados_count > 0 && (
+                            <DropdownMenuItem onClick={() => openSegundaChamada(prova)}>
+                              <RotateCcw className="mr-2 h-4 w-4" /> Segunda Chamada
+                            </DropdownMenuItem>
+                          )}
+                          {isDono && (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => setDeleteId(prova.id)}>
@@ -527,6 +715,110 @@ function ProvasPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
             <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Excluir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════════════════════════════════════════════ */}
+      {/*  MODAL: Duplicar para Turmas                    */}
+      {/* ════════════════════════════════════════════════ */}
+      <Dialog open={duplicateProva !== null} onOpenChange={(open) => !open && setDuplicateProva(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicar Prova para Outras Turmas</DialogTitle>
+            <DialogDescription>
+              {duplicateProva?.disciplina?.nome ?? 'Prova'} &mdash;{' '}
+              {duplicateProva?.turma ? `${duplicateProva.turma.serie} ${duplicateProva.turma.turma}` : ''}
+              {' '}&mdash; {duplicateProva?.num_questoes} questões
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="text-sm font-medium text-gray-700">Selecione as turmas de destino:</p>
+            {turmas
+              .filter(t => t.id !== duplicateProva?.turma_id)
+              .map(t => (
+                <label key={t.id} className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={duplicateTurmas.includes(t.id)}
+                    onChange={(e) => {
+                      setDuplicateTurmas(prev =>
+                        e.target.checked
+                          ? [...prev, t.id]
+                          : prev.filter(id => id !== t.id)
+                      )
+                    }}
+                  />
+                  <span className="text-sm font-medium">{t.serie} - {t.turma}</span>
+                </label>
+              ))}
+            {turmas.filter(t => t.id !== duplicateProva?.turma_id).length === 0 && (
+              <p className="text-sm text-gray-500 py-2">Nenhuma outra turma disponível.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateProva(null)}>Cancelar</Button>
+            <Button
+              onClick={handleDuplicate}
+              disabled={duplicating || duplicateTurmas.length === 0}
+              className="gap-2"
+            >
+              {duplicating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+              {duplicating ? 'Duplicando...' : `Duplicar para ${duplicateTurmas.length} turma(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════════════════════════════════════════════ */}
+      {/*  MODAL: Segunda Chamada                         */}
+      {/* ════════════════════════════════════════════════ */}
+      <Dialog open={segundaChamadaProva !== null} onOpenChange={(open) => !open && setSegundaChamadaProva(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gerar Segunda Chamada</DialogTitle>
+            <DialogDescription>
+              {segundaChamadaProva?.disciplina?.nome ?? 'Prova'} &mdash;{' '}
+              {segundaChamadaProva?.turma ? `${segundaChamadaProva.turma.serie} ${segundaChamadaProva.turma.turma}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {loadingAusentes ? (
+              <div className="flex justify-center py-4">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+              </div>
+            ) : alunosAusentes.length === 0 ? (
+              <p className="text-sm text-gray-500 py-2">Nenhum aluno ausente encontrado nesta prova.</p>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-gray-700">
+                  {alunosAusentes.length} aluno(s) ausente(s):
+                </p>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {alunosAusentes.map(a => (
+                    <div key={a.id} className="flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                      <span className="text-gray-400 text-xs w-6">{a.numero ?? '-'}</span>
+                      <span className="font-medium text-gray-800">{a.nome}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  Uma nova prova será criada com o mesmo gabarito e configurações. Na correção, apenas os alunos ausentes serão exibidos.
+                </p>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSegundaChamadaProva(null)}>Cancelar</Button>
+            <Button
+              onClick={handleSegundaChamada}
+              disabled={criarSegundaChamada || alunosAusentes.length === 0}
+              className="gap-2"
+            >
+              {criarSegundaChamada ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              {criarSegundaChamada ? 'Criando...' : 'Criar Segunda Chamada'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

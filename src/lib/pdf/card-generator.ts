@@ -259,14 +259,14 @@ function desenharCartao(
   // ── 3. Título e info da prova ──
   doc.setTextColor(50)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(nomeInstituicao ? 9 : 11)
+  doc.setFontSize(nomeInstituicao ? 11 : 13)
   doc.text((nomeInstituicao || 'PROVASCAN').toUpperCase(), C.tituloX, yOff + C.tituloY + 2)
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
+  doc.setFontSize(9)
   doc.setTextColor(80)
-  doc.text(`${prova.disciplina}  |  ${prova.turma}  |  ${prova.bloco}`, C.tituloX, yOff + C.tituloY + 7)
-  doc.text(`${formatDate(prova.data)}  |  ${nq} questões  |  ${nalts} alternativas`, C.tituloX, yOff + C.tituloY + 12)
+  doc.text(`${prova.disciplina}  |  ${prova.turma}  |  ${prova.bloco}`, C.tituloX, yOff + C.tituloY + 8)
+  doc.text(`${formatDate(prova.data)}  |  ${nq} questões  |  ${nalts} alternativas`, C.tituloX, yOff + C.tituloY + 13)
 
   // ── 4. Dados do aluno ──
   const isReserva = String(aluno.id).charAt(0) === 'R'
@@ -298,11 +298,11 @@ function desenharCartao(
   } else {
     doc.setTextColor(0)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
+    doc.setFontSize(12)
     doc.text(aluno.nome, C.margem + 6, yOff + C.alunoY + 1)
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
+    doc.setFontSize(10)
     doc.setTextColor(80)
     doc.text(`N\u00BA ${aluno.numero || '-'}`, C.largura - C.margem - 20, yOff + C.alunoY + 1)
   }

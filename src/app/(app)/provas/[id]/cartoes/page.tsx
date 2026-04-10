@@ -24,7 +24,7 @@ export default function CartoesPage() {
   const params = useParams()
   const provaId = params.id as string
   const supabase = createClient()
-  const { workspace } = useWorkspace()
+  const { workspace, workspaceId } = useWorkspace()
 
   const [prova, setProva] = useState<ProvaWithJoins | null>(null)
   const [alunos, setAlunos] = useState<Aluno[]>([])
@@ -37,10 +37,11 @@ export default function CartoesPage() {
         .from('provas')
         .select('*, disciplina:disciplinas(nome), turma:turmas(serie, turma)')
         .eq('id', provaId)
+        .eq('workspace_id', workspaceId)
         .single()
 
       if (provaError || !provaData) {
-        toast.error('Prova não encontrada')
+        toast.error('Prova não encontrada neste workspace')
         setLoading(false)
         return
       }

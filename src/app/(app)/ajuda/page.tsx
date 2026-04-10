@@ -19,6 +19,9 @@ import {
   FileBarChart,
   Smartphone,
   AlertTriangle,
+  Copy,
+  RotateCcw,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -128,7 +131,7 @@ const FAQ_ITEMS: FaqItem[] = [
     categoria: 'Estatísticas e Relatórios',
     icon: BarChart3,
     pergunta: 'Quais estatísticas estão disponíveis?',
-    resposta: 'Cada prova tem uma página de estatísticas com: média de acertos, percentual geral, ranking de alunos, análise de dificuldade por questão (quais foram fáceis e difíceis), e contagem de presença/faltas.',
+    resposta: 'Cada prova tem uma página completa de estatísticas com: cards de resumo (presentes, faltas, média de acertos, média percentual), grid compacto colorido de acertos por questão, histograma de distribuição de desempenho, insights automáticos (questões difíceis e fáceis), e ranking de alunos com medalhas. Para provas com modo "Por Nota", também são exibidos: nota máxima, nota mínima, mediana e o ranking ordena por nota.',
   },
   {
     categoria: 'Estatísticas e Relatórios',
@@ -154,6 +157,31 @@ const FAQ_ITEMS: FaqItem[] = [
     icon: Settings,
     pergunta: 'Posso participar de mais de um workspace?',
     resposta: 'Sim! Você pode ser convidado para os workspaces de outras pessoas. Use o seletor no topo do menu lateral para alternar entre eles. Isso é útil quando você trabalha com diferentes grupos ou em mais de uma escola.',
+  },
+  // Provas — Duplicar e Segunda Chamada
+  {
+    categoria: 'Provas',
+    icon: Copy,
+    pergunta: 'Como aplico a mesma prova para várias turmas?',
+    resposta: 'Na lista de provas, clique no menu (3 pontinhos) da prova e selecione "Duplicar para Turmas". Um painel aparecerá com todas as suas turmas — marque as desejadas e clique em "Duplicar". Cada turma receberá uma cópia independente da prova com o mesmo gabarito e configurações.',
+  },
+  {
+    categoria: 'Provas',
+    icon: RotateCcw,
+    pergunta: 'Como faço uma segunda chamada para alunos que faltaram?',
+    resposta: 'Após corrigir a prova original (marcando faltas com "F"), vá na lista de provas, clique no menu (3 pontinhos) e selecione "Segunda Chamada". O sistema mostrará os alunos ausentes e criará uma nova prova vinculada, com o mesmo gabarito. Na correção da segunda chamada, apenas os alunos faltantes serão exibidos.',
+  },
+  {
+    categoria: 'Provas',
+    icon: BarChart3,
+    pergunta: 'O que significa a coluna "Progresso" na lista de provas?',
+    resposta: 'A coluna Progresso mostra quantos alunos já foram corrigidos do total da turma (ex: 15/30). Quando todos estão corrigidos, o indicador fica verde. Amarelo significa correção parcial e cinza significa que ninguém foi corrigido ainda.',
+  },
+  {
+    categoria: 'Correção',
+    icon: ClipboardCheck,
+    pergunta: 'O que acontece se eu salvar uma correção que já existe?',
+    resposta: 'O sistema detecta que já existem correções salvas e exibe um aviso antes de substituir: "Esta prova já possui X correções. Deseja substituir?" Você pode cancelar ou confirmar a substituição. Isso evita perda acidental de dados.',
   },
   // Problemas comuns
   {
@@ -224,6 +252,28 @@ export default function AjudaPage() {
           Tire suas dúvidas e aprenda a usar o ProvaScan
         </p>
       </div>
+
+      {/* Nota de atualização */}
+      <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white mt-0.5">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-emerald-900 text-sm">Novidades - Abril 2026</h3>
+              <ul className="mt-1 text-xs text-emerald-800 space-y-0.5 list-disc list-inside">
+                <li>Segunda chamada para alunos ausentes</li>
+                <li>Duplicar prova para varias turmas de uma vez</li>
+                <li>Progresso de correcao visivel na tabela de provas</li>
+                <li>Estatisticas melhoradas com distribuicao e notas (max, min, mediana)</li>
+                <li>Aviso antes de substituir correcoes existentes</li>
+                <li>Fontes maiores nos cartoes-resposta impressos</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tutorial card */}
       <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50">

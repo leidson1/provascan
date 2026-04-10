@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const memberRole = inviteRole === 'coordenador' ? 'coordenador' : 'corretor'
 
     if (!email || !workspaceId) {
-      return NextResponse.json({ error: 'Preencha o email' }, { status: 400 })
+      return NextResponse.json({ error: 'Email e workspace são obrigatórios' }, { status: 400 })
     }
 
     // Verificar que é dono do workspace
@@ -49,24 +49,8 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     )
 
-    // Buscar se o email já tem conta
-    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 1,
-    })
-
-    // listUsers não filtra por email, precisamos buscar de outra forma
-    // Usar getUserByEmail que é mais direto
+    // Buscar se o email já tem conta via profiles
     let existingUser = null
-    try {
-      const { data } = await supabaseAdmin.auth.admin.getUserById('')
-      // Não funciona assim, vamos buscar pelo email na tabela profiles
-      void data
-    } catch {
-      // ignora
-    }
-
-    // Buscar no profiles pelo email (mais confiável)
     const { data: profileMatch } = await supabaseAdmin
       .from('profiles')
       .select('id, nome, email')

@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { AnswerKeyEditor } from '@/components/answer-key-editor'
 import type { Prova } from '@/types/database'
+import { useWorkspace } from '@/contexts/workspace-context'
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '\u2014'
@@ -55,6 +56,7 @@ export default function ProvaDetailPage() {
   const params = useParams()
   const provaId = params.id as string
   const supabase = createClient()
+  const { workspaceId } = useWorkspace()
 
   const [prova, setProva] = useState<Prova | null>(null)
   const [gabarito, setGabarito] = useState('')
@@ -69,10 +71,11 @@ export default function ProvaDetailPage() {
           '*, disciplina:disciplinas(nome), turma:turmas(serie, turma)'
         )
         .eq('id', provaId)
+        .eq('workspace_id', workspaceId)
         .single()
 
       if (error || !data) {
-        toast.error('Prova não encontrada')
+        toast.error('Prova não encontrada neste workspace')
         setLoading(false)
         return
       }
