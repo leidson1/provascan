@@ -168,8 +168,8 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     categoria: 'Provas',
     icon: RotateCcw,
-    pergunta: 'Como faço uma segunda chamada para alunos que faltaram?',
-    resposta: 'Após corrigir a prova original (marcando faltas com "F"), vá na lista de provas, clique no menu (3 pontinhos) e selecione "Segunda Chamada". O sistema mostrará os alunos ausentes e criará uma nova prova vinculada, com o mesmo gabarito. Na correção da segunda chamada, apenas os alunos faltantes serão exibidos.',
+    pergunta: 'Como faço uma 2ª chamada para alunos que faltaram?',
+    resposta: 'Após corrigir a prova original (marcando faltas com "F"), vá na lista de provas, clique no menu (3 pontinhos) e selecione "2ª Chamada". O sistema mostrará os alunos ausentes e abrirá o formulário de criação pré-preenchido — você pode ajustar data, tipo, gabarito e demais opções. Na correção e nos cartões, apenas os alunos faltantes serão exibidos. A prova aparecerá na tabela com o badge "2ª Chamada" e a referência da prova original.',
   },
   {
     categoria: 'Provas',
@@ -263,7 +263,7 @@ export default function AjudaPage() {
             <div>
               <h3 className="font-semibold text-emerald-900 text-sm">Novidades - Abril 2026</h3>
               <ul className="mt-1 text-xs text-emerald-800 space-y-0.5 list-disc list-inside">
-                <li>Segunda chamada para alunos ausentes</li>
+                <li>2ª chamada para alunos ausentes</li>
                 <li>Duplicar prova para varias turmas de uma vez</li>
                 <li>Progresso de correcao visivel na tabela de provas</li>
                 <li>Estatisticas melhoradas com distribuicao e notas (max, min, mediana)</li>

@@ -261,8 +261,13 @@ function ProvasPage() {
       // Attach counts to provas
       for (const p of provasList) {
         p.resultados_count = resCounts[p.id] || 0
-        p.alunos_count = p.turma_id ? (alunoCounts[p.turma_id] || 0) : 0
         p.faltas_count = faltaCounts[p.id] || 0
+        if (p.prova_origem_id) {
+          // Segunda chamada: total = faltas da prova original
+          p.alunos_count = faltaCounts[p.prova_origem_id] || 0
+        } else {
+          p.alunos_count = p.turma_id ? (alunoCounts[p.turma_id] || 0) : 0
+        }
       }
 
       setProvas(provasList)
@@ -324,9 +329,9 @@ function ProvasPage() {
 
     const isSegunda = !!segundaChamadaOrigemId
     if (error) {
-      toast.error(editingProva ? 'Erro ao atualizar prova' : isSegunda ? 'Erro ao criar segunda chamada' : 'Erro ao criar prova')
+      toast.error(editingProva ? 'Erro ao atualizar prova' : isSegunda ? 'Erro ao criar 2ª chamada' : 'Erro ao criar prova')
     } else {
-      toast.success(editingProva ? 'Prova atualizada!' : isSegunda ? 'Segunda chamada criada!' : 'Prova criada com sucesso!')
+      toast.success(editingProva ? 'Prova atualizada!' : isSegunda ? '2ª chamada criada!' : 'Prova criada com sucesso!')
       setProvaDialogOpen(false)
       setSegundaChamadaOrigemId(null)
       fetchAll()
@@ -541,7 +546,7 @@ function ProvasPage() {
                       <span className="inline-flex items-center gap-1.5">
                         {statusBadge(prova.status)}
                         {prova.prova_origem_id && (
-                          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-[10px]">2a Chamada</Badge>
+                          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-[10px]">2ª Chamada (Prova #{prova.prova_origem_id})</Badge>
                         )}
                       </span>
                     </TableCell>
@@ -603,7 +608,7 @@ function ProvasPage() {
                           )}
                           {!isCorretor && prova.resultados_count !== undefined && prova.resultados_count > 0 && (
                             <DropdownMenuItem onClick={() => openSegundaChamada(prova)}>
-                              <RotateCcw className="mr-2 h-4 w-4" /> Segunda Chamada
+                              <RotateCcw className="mr-2 h-4 w-4" /> 2ª Chamada
                             </DropdownMenuItem>
                           )}
                           {isDono && (
@@ -795,7 +800,7 @@ function ProvasPage() {
       <Dialog open={segundaChamadaProva !== null} onOpenChange={(open) => !open && setSegundaChamadaProva(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Gerar Segunda Chamada</DialogTitle>
+            <DialogTitle>Gerar 2ª Chamada</DialogTitle>
             <DialogDescription>
               {segundaChamadaProva?.disciplina?.nome ?? 'Prova'} &mdash;{' '}
               {segundaChamadaProva?.turma ? `${segundaChamadaProva.turma.serie} ${segundaChamadaProva.turma.turma}` : ''}

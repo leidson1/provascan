@@ -189,7 +189,7 @@ export default function CartoesPage() {
 
       {prova.prova_origem_id && (
         <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
-          <strong>Segunda chamada</strong> — gerando cartões apenas para os {alunos.length} aluno(s) ausente(s) na prova original.
+          <strong>2ª Chamada</strong> — gerando cartões apenas para os {alunos.length} aluno(s) ausente(s) na prova original.
         </div>
       )}
 
