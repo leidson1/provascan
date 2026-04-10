@@ -12,7 +12,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { nome, email, senha, workspaceId } = body
+    const { nome, email, senha, workspaceId, role: inviteRole } = body
+    const memberRole = inviteRole === 'coordenador' ? 'coordenador' : 'corretor'
 
     if (!nome || !email || !senha || !workspaceId) {
       return NextResponse.json({ error: 'Preencha todos os campos' }, { status: 400 })
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
       .insert({
         workspace_id: workspaceId,
         user_id: newUser.user.id,
-        role: 'corretor',
+        role: memberRole,
       })
 
     if (memberError) {

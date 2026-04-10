@@ -13,6 +13,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { CorrectionGrid } from '@/components/correction-grid'
 import type { Prova, Aluno, Resultado } from '@/types/database'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
@@ -42,6 +43,8 @@ export default function CorrecaoPage() {
   const [dados, setDados] = useState<Record<number, DadosAluno>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [existingCount, setExistingCount] = useState(0)
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false)
 
   const gabarito = prova?.gabarito
     ? prova.gabarito.split(',')
@@ -158,10 +161,11 @@ export default function CorrecaoPage() {
           '*, disciplina:disciplinas(nome), turma:turmas(serie, turma)'
         )
         .eq('id', provaId)
+        .eq('workspace_id', workspaceId)
         .single()
 
       if (provaErr || !provaData) {
-        toast.error('Prova não encontrada')
+        toast.error('Prova não encontrada neste workspace')
         setLoading(false)
         return
       }
@@ -183,7 +187,20 @@ export default function CorrecaoPage() {
         .eq('ativo', true)
         .order('numero', { ascending: true })
 
-      const alunosList = (alunosData ?? []) as Aluno[]
+      let alunosList = (alunosData ?? []) as Aluno[]
+
+      // Se é segunda chamada, filtrar só alunos ausentes na prova original
+      if (p.prova_origem_id) {
+        const { data: origemResultados } = await supabase
+          .from('resultados')
+          .select('aluno_id')
+          .eq('prova_id', p.prova_origem_id)
+          .eq('presenca', 'F')
+
+        const ausentesIds = new Set((origemResultados ?? []).map((r: { aluno_id: number }) => r.aluno_id))
+        alunosList = alunosList.filter(a => ausentesIds.has(a.id))
+      }
+
       setAlunos(alunosList)
 
       // Fetch existing resultados
@@ -193,6 +210,7 @@ export default function CorrecaoPage() {
         .eq('prova_id', provaId)
 
       const resultadosList = (resultados ?? []) as Resultado[]
+      setExistingCount(resultadosList.filter(r => r.presenca === 'P' || r.presenca === '*').length)
       const gabArr = p.gabarito
         ? p.gabarito.split(',')
         : Array(p.num_questoes).fill('')
@@ -335,8 +353,18 @@ export default function CorrecaoPage() {
     })
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (!prova) return
+    if (existingCount > 0) {
+      setConfirmSaveOpen(true)
+      return
+    }
+    executeSave()
+  }
+
+  async function executeSave() {
+    if (!prova) return
+    setConfirmSaveOpen(false)
     setSaving(true)
 
     const {
@@ -379,6 +407,7 @@ export default function CorrecaoPage() {
       console.error(error)
     } else {
       toast.success(`Correção salva! ${upserts.length} aluno(s) registrados.`)
+      setExistingCount(upserts.length)
     }
 
     setSaving(false)
@@ -421,6 +450,13 @@ export default function CorrecaoPage() {
 
   return (
     <div className="space-y-4">
+      {/* Banner segunda chamada */}
+      {prova.prova_origem_id && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+          <strong>Segunda chamada</strong> — mostrando apenas os {alunos.length} aluno(s) ausente(s) na prova original.
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -572,6 +608,9 @@ export default function CorrecaoPage() {
             {corrigidos > 0
               ? `${corrigidos} aluno(s) serão salvos`
               : 'Marque presença para habilitar'}
+            {existingCount > 0 && corrigidos > 0 && (
+              <span className="ml-1 text-amber-600">(substituirá dados existentes)</span>
+            )}
           </p>
           <Button
             onClick={handleSave}
@@ -583,6 +622,26 @@ export default function CorrecaoPage() {
           </Button>
         </div>
       </div>
+
+      {/* Dialog de confirmação para substituir correções existentes */}
+      <Dialog open={confirmSaveOpen} onOpenChange={setConfirmSaveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Substituir correções existentes?</DialogTitle>
+            <DialogDescription>
+              Esta prova já possui {existingCount} correção(ões) salva(s). Ao continuar, os dados existentes serão substituídos pelos novos.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmSaveOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={executeSave} className="bg-amber-600 hover:bg-amber-700">
+              Substituir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -16,6 +16,9 @@ import {
   Trophy,
   AlertTriangle,
   CheckCircle2,
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -24,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { Prova, Resultado } from '@/types/database'
+import { useWorkspace } from '@/contexts/workspace-context'
 
 type ResultadoComAluno = Omit<Resultado, 'aluno'> & {
   aluno?: { nome: string; numero: number | null }
@@ -33,6 +37,7 @@ export default function EstatisticasPage() {
   const params = useParams()
   const provaId = params.id as string
   const supabase = createClient()
+  const { workspaceId } = useWorkspace()
 
   const [prova, setProva] = useState<Prova | null>(null)
   const [resultados, setResultados] = useState<ResultadoComAluno[]>([])
@@ -46,10 +51,11 @@ export default function EstatisticasPage() {
           '*, disciplina:disciplinas(nome), turma:turmas(serie, turma)'
         )
         .eq('id', provaId)
+        .eq('workspace_id', workspaceId)
         .single()
 
       if (provaErr || !provaData) {
-        toast.error('Prova não encontrada')
+        toast.error('Prova não encontrada neste workspace')
         setLoading(false)
         return
       }
@@ -114,6 +120,34 @@ export default function EstatisticasPage() {
         presentes.length
       : null
 
+  // Additional nota stats
+  const notasPresentes = presentes.map(r => r.nota ?? 0)
+  const notaMaxima = notasPresentes.length > 0 ? Math.max(...notasPresentes) : 0
+  const notaMinima = notasPresentes.length > 0 ? Math.min(...notasPresentes) : 0
+  const medianaNota = (() => {
+    if (notasPresentes.length === 0) return 0
+    const sorted = [...notasPresentes].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+  })()
+
+  // Distribution ranges
+  const distribuicao = (() => {
+    const faixas = [
+      { label: '0-20%', min: 0, max: 20, count: 0, color: 'bg-red-500' },
+      { label: '20-40%', min: 20, max: 40, count: 0, color: 'bg-orange-500' },
+      { label: '40-60%', min: 40, max: 60, count: 0, color: 'bg-yellow-500' },
+      { label: '60-80%', min: 60, max: 80, count: 0, color: 'bg-lime-500' },
+      { label: '80-100%', min: 80, max: 101, count: 0, color: 'bg-green-500' },
+    ]
+    for (const r of presentes) {
+      const pct = r.percentual ?? 0
+      const f = faixas.find(f => pct >= f.min && pct < f.max)
+      if (f) f.count++
+    }
+    return faixas
+  })()
+
   // Per-question stats
   const questaoStats = Array.from({ length: prova.num_questoes }, (_, i) => {
     const key = `q${i + 1}`
@@ -140,9 +174,11 @@ export default function EstatisticasPage() {
     }
   })
 
-  // Ranking
-  const ranking = [...presentes].sort(
-    (a, b) => (b.acertos ?? 0) - (a.acertos ?? 0)
+  // Ranking — sort by nota when modo=nota, otherwise by acertos
+  const ranking = [...presentes].sort((a, b) =>
+    prova.modo_avaliacao === 'nota'
+      ? (b.nota ?? 0) - (a.nota ?? 0)
+      : (b.acertos ?? 0) - (a.acertos ?? 0)
   )
 
   // Insights
@@ -279,6 +315,9 @@ export default function EstatisticasPage() {
                     <p className="text-xs text-gray-500">Média Nota</p>
                     <p className="text-xl font-bold text-gray-900">
                       {mediaNota.toFixed(1)}
+                      {prova.nota_total && (
+                        <span className="text-sm font-normal text-gray-500"> de {prova.nota_total}</span>
+                      )}
                     </p>
                   </div>
                 </CardContent>
@@ -286,36 +325,97 @@ export default function EstatisticasPage() {
             )}
           </div>
 
-          {/* Bar chart: Acertos por Questão */}
+          {/* Extra nota stats */}
+          {prova.modo_avaliacao === 'nota' && presentes.length > 0 && (
+            <div className="grid grid-cols-3 gap-3">
+              <Card>
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-100">
+                    <TrendingUp className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Nota Máxima</p>
+                    <p className="text-xl font-bold text-gray-900">{notaMaxima.toFixed(1)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-100">
+                    <TrendingDown className="h-5 w-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Nota Mínima</p>
+                    <p className="text-xl font-bold text-gray-900">{notaMinima.toFixed(1)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100">
+                    <BarChart3 className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Mediana</p>
+                    <p className="text-xl font-bold text-gray-900">{medianaNota.toFixed(1)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Distribuição de Desempenho */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                Acertos por Questão
-              </CardTitle>
+              <CardTitle className="text-base">Distribuição de Desempenho</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                {questaoStats.map((q) => (
-                  <div key={q.index} className="flex items-center gap-3">
-                    <span className="w-8 shrink-0 text-right text-xs font-semibold text-gray-600">
-                      Q{q.index + 1}
-                    </span>
-                    <div className="relative h-6 flex-1 overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${barColor(q.percentAcerto, q.anulada)}`}
-                        style={{
-                          width: `${Math.max(q.percentAcerto, 2)}%`,
-                        }}
-                      />
-                      <span className="absolute inset-y-0 right-2 flex items-center text-xs font-semibold text-gray-700">
-                        {q.anulada ? 'Anulada' : `${q.percentAcerto}%`}
-                      </span>
+              <div className="flex items-end gap-2 h-32">
+                {distribuicao.map((f) => {
+                  const maxCount = Math.max(...distribuicao.map(d => d.count), 1)
+                  const heightPct = (f.count / maxCount) * 100
+                  return (
+                    <div key={f.label} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-xs font-semibold text-gray-700">{f.count}</span>
+                      <div className="w-full relative" style={{ height: '80px' }}>
+                        <div
+                          className={`absolute bottom-0 w-full rounded-t ${f.color} transition-all duration-500`}
+                          style={{ height: `${Math.max(heightPct, 4)}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-gray-500 text-center leading-tight">{f.label}</span>
                     </div>
-                    {q.anulada && (
-                      <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 text-[10px] px-1.5">
-                        X
-                      </Badge>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Acertos por Questão — grid compacto */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Acertos por Questão</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+                {questaoStats.map((q) => (
+                  <div
+                    key={q.index}
+                    className={cn(
+                      'flex flex-col items-center justify-center rounded-lg p-2 text-center transition-all',
+                      q.anulada
+                        ? 'bg-amber-100 text-amber-800'
+                        : q.percentAcerto >= 80
+                          ? 'bg-green-100 text-green-800'
+                          : q.percentAcerto >= 40
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
                     )}
+                  >
+                    <span className="text-[10px] font-medium opacity-70">Q{q.index + 1}</span>
+                    <span className="text-sm font-bold">
+                      {q.anulada ? 'X' : `${q.percentAcerto}%`}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -400,9 +500,15 @@ export default function EstatisticasPage() {
                       <span className="flex-1 text-sm font-medium text-gray-800 truncate">
                         {r.aluno?.nome ?? `Aluno #${r.aluno_id}`}
                       </span>
-                      <span className="text-sm font-semibold text-indigo-600">
-                        {r.acertos ?? 0}/{prova.num_questoes}
-                      </span>
+                      {prova.modo_avaliacao === 'nota' && r.nota != null ? (
+                        <span className="text-sm font-semibold text-purple-600">
+                          {r.nota.toFixed(1)}{prova.nota_total ? <span className="text-gray-400 font-normal">/{prova.nota_total}</span> : ''}
+                        </span>
+                      ) : (
+                        <span className="text-sm font-semibold text-indigo-600">
+                          {r.acertos ?? 0}/{prova.num_questoes}
+                        </span>
+                      )}
                       <Badge
                         variant="outline"
                         className={`text-xs ${
@@ -415,11 +521,6 @@ export default function EstatisticasPage() {
                       >
                         {(r.percentual ?? 0).toFixed(0)}%
                       </Badge>
-                      {prova.modo_avaliacao === 'nota' && r.nota != null && (
-                        <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 text-xs">
-                          {r.nota.toFixed(1)}
-                        </Badge>
-                      )}
                     </div>
                   ))}
                 </div>
