@@ -57,9 +57,21 @@ export default function CartoesPage() {
           .eq('ativo', true)
           .order('numero', { ascending: true })
 
-        if (alunosData) {
-          setAlunos(alunosData)
+        let alunosList = alunosData ?? []
+
+        // Se é segunda chamada, filtrar só alunos ausentes na prova original
+        if (p.prova_origem_id) {
+          const { data: origemResultados } = await supabase
+            .from('resultados')
+            .select('aluno_id')
+            .eq('prova_id', p.prova_origem_id)
+            .eq('presenca', 'F')
+
+          const ausentesIds = new Set((origemResultados ?? []).map((r: { aluno_id: number }) => r.aluno_id))
+          alunosList = alunosList.filter((a: { id: number }) => ausentesIds.has(a.id))
         }
+
+        setAlunos(alunosList)
       }
 
       setLoading(false)
@@ -174,6 +186,12 @@ export default function CartoesPage() {
           </p>
         </div>
       </div>
+
+      {prova.prova_origem_id && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+          <strong>Segunda chamada</strong> — gerando cartões apenas para os {alunos.length} aluno(s) ausente(s) na prova original.
+        </div>
+      )}
 
       <Card>
         <CardHeader>

@@ -53,6 +53,7 @@ interface ProvaRow {
   // Computed fields for progress
   resultados_count?: number
   alunos_count?: number
+  faltas_count?: number
 }
 
 function statusBadge(status: string) {
@@ -138,7 +139,7 @@ function ProvasPage() {
   const [segundaChamadaProva, setSegundaChamadaProva] = useState<ProvaRow | null>(null)
   const [alunosAusentes, setAlunosAusentes] = useState<AlunoAusente[]>([])
   const [loadingAusentes, setLoadingAusentes] = useState(false)
-  const [criarSegundaChamada, setCriarSegundaChamada] = useState(false)
+  const [segundaChamadaOrigemId, setSegundaChamadaOrigemId] = useState<number | null>(null)
 
   // Sort
   const [sortKey, setSortKey] = useState<'data' | 'disciplina' | 'turma' | 'questoes' | 'status'>('data')
@@ -232,7 +233,7 @@ function ProvasPage() {
           .from('resultados')
           .select('prova_id, presenca')
           .eq('workspace_id', workspaceId)
-          .in('presenca', ['P', '*']),
+          .in('presenca', ['P', '*', 'F']),
         supabase
           .from('alunos')
           .select('turma_id')
@@ -240,10 +241,15 @@ function ProvasPage() {
           .eq('ativo', true),
       ])
 
-      // Count resultados per prova
+      // Count resultados per prova (presentes e faltas separados)
       const resCounts: Record<number, number> = {}
+      const faltaCounts: Record<number, number> = {}
       for (const r of resResultados.data ?? []) {
-        resCounts[r.prova_id] = (resCounts[r.prova_id] || 0) + 1
+        if (r.presenca === 'F') {
+          faltaCounts[r.prova_id] = (faltaCounts[r.prova_id] || 0) + 1
+        } else {
+          resCounts[r.prova_id] = (resCounts[r.prova_id] || 0) + 1
+        }
       }
 
       // Count alunos per turma
@@ -256,6 +262,7 @@ function ProvasPage() {
       for (const p of provasList) {
         p.resultados_count = resCounts[p.id] || 0
         p.alunos_count = p.turma_id ? (alunoCounts[p.turma_id] || 0) : 0
+        p.faltas_count = faltaCounts[p.id] || 0
       }
 
       setProvas(provasList)
@@ -301,20 +308,27 @@ function ProvasPage() {
       pesos_questoes: formData.pesosQuestoes.join(','),
     }
 
+    // Se é segunda chamada, vincular à prova original
+    const fullPayload = segundaChamadaOrigemId
+      ? { ...payload, prova_origem_id: segundaChamadaOrigemId }
+      : payload
+
     let error
     if (editingProva) {
-      const res = await supabase.from('provas').update(payload).eq('id', editingProva.id)
+      const res = await supabase.from('provas').update(fullPayload).eq('id', editingProva.id)
       error = res.error
     } else {
-      const res = await supabase.from('provas').insert(payload)
+      const res = await supabase.from('provas').insert(fullPayload)
       error = res.error
     }
 
+    const isSegunda = !!segundaChamadaOrigemId
     if (error) {
-      toast.error(editingProva ? 'Erro ao atualizar prova' : 'Erro ao criar prova')
+      toast.error(editingProva ? 'Erro ao atualizar prova' : isSegunda ? 'Erro ao criar segunda chamada' : 'Erro ao criar prova')
     } else {
-      toast.success(editingProva ? 'Prova atualizada!' : 'Prova criada com sucesso!')
+      toast.success(editingProva ? 'Prova atualizada!' : isSegunda ? 'Segunda chamada criada!' : 'Prova criada com sucesso!')
       setProvaDialogOpen(false)
+      setSegundaChamadaOrigemId(null)
       fetchAll()
     }
     setSaving(false)
@@ -416,44 +430,14 @@ function ProvasPage() {
     setLoadingAusentes(false)
   }
 
-  async function handleSegundaChamada() {
-    if (!segundaChamadaProva || !userId) return
-    setCriarSegundaChamada(true)
-
+  function handleProsseguirSegundaChamada() {
+    if (!segundaChamadaProva) return
     const p = segundaChamadaProva
-    const { data: newProva, error } = await supabase
-      .from('provas')
-      .insert({
-        user_id: userId,
-        workspace_id: workspaceId,
-        data: new Date().toISOString().split('T')[0],
-        disciplina_id: p.disciplina_id,
-        turma_id: p.turma_id,
-        num_questoes: p.num_questoes,
-        num_alternativas: p.num_alternativas,
-        bloco: p.bloco,
-        modo_avaliacao: p.modo_avaliacao,
-        nota_total: p.nota_total,
-        status: 'aberta' as const,
-        tipo_prova: p.tipo_prova,
-        tipos_questoes: p.tipos_questoes,
-        criterio_discursiva: p.criterio_discursiva,
-        modo_anulacao: p.modo_anulacao,
-        gabarito: p.gabarito,
-        pesos_questoes: p.pesos_questoes,
-        prova_origem_id: p.id,
-      })
-      .select('id')
-      .single()
-
-    if (error || !newProva) {
-      toast.error('Erro ao criar segunda chamada')
-    } else {
-      toast.success('Segunda chamada criada!')
-      setSegundaChamadaProva(null)
-      fetchAll()
-    }
-    setCriarSegundaChamada(false)
+    // Guardar origem e abrir ProvaModal pré-preenchido
+    setSegundaChamadaOrigemId(p.id)
+    setEditingProva(null)
+    setSegundaChamadaProva(null)
+    setProvaDialogOpen(true)
   }
 
   // ── Loading ──
@@ -563,15 +547,22 @@ function ProvasPage() {
                     </TableCell>
                     <TableCell className="text-center">
                       {prova.alunos_count ? (
-                        <span className={cn(
-                          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                          prova.resultados_count === prova.alunos_count
-                            ? 'bg-green-100 text-green-700'
-                            : prova.resultados_count
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-gray-100 text-gray-500'
-                        )}>
-                          {prova.resultados_count ?? 0}/{prova.alunos_count}
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className={cn(
+                            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                            (prova.resultados_count ?? 0) + (prova.faltas_count ?? 0) === prova.alunos_count
+                              ? 'bg-green-100 text-green-700'
+                              : prova.resultados_count
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-gray-100 text-gray-500'
+                          )}>
+                            {prova.resultados_count ?? 0}/{prova.alunos_count}
+                          </span>
+                          {(prova.faltas_count ?? 0) > 0 && (
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                              {prova.faltas_count}F
+                            </span>
+                          )}
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">&mdash;</span>
@@ -639,28 +630,55 @@ function ProvasPage() {
       {/* ════════════════════════════════════════════════ */}
       <ProvaModal
         open={provaDialogOpen}
-        onOpenChange={setProvaDialogOpen}
+        onOpenChange={(open) => {
+          setProvaDialogOpen(open)
+          if (!open) setSegundaChamadaOrigemId(null)
+        }}
         disciplinas={disciplinas}
         turmas={turmas}
         saving={saving}
         onSave={handleSaveProva}
         editMode={!!editingProva}
-        initial={editingProva ? {
-          data: editingProva.data || '',
-          bloco: editingProva.bloco,
-          disciplinaId: editingProva.disciplina_id ? String(editingProva.disciplina_id) : '',
-          turmaId: editingProva.turma_id ? String(editingProva.turma_id) : '',
-          tipoProva: editingProva.tipo_prova || 'objetiva',
-          numQuestoes: editingProva.num_questoes,
-          numAlternativas: editingProva.num_alternativas,
-          criterioDiscursiva: editingProva.criterio_discursiva || 3,
-          modoAvaliacao: editingProva.modo_avaliacao,
-          notaTotal: editingProva.nota_total || 10,
-          modoAnulacao: editingProva.modo_anulacao || 'contar_certa',
-          tiposQuestoes: editingProva.tipos_questoes?.split(',') || [],
-          gabarito: editingProva.gabarito || '',
-          pesosQuestoes: editingProva.pesos_questoes?.split(',').map(Number) || [],
-        } : undefined}
+        initial={(() => {
+          // Edição de prova existente
+          if (editingProva) return {
+            data: editingProva.data || '',
+            bloco: editingProva.bloco,
+            disciplinaId: editingProva.disciplina_id ? String(editingProva.disciplina_id) : '',
+            turmaId: editingProva.turma_id ? String(editingProva.turma_id) : '',
+            tipoProva: editingProva.tipo_prova || 'objetiva',
+            numQuestoes: editingProva.num_questoes,
+            numAlternativas: editingProva.num_alternativas,
+            criterioDiscursiva: editingProva.criterio_discursiva || 3,
+            modoAvaliacao: editingProva.modo_avaliacao,
+            notaTotal: editingProva.nota_total || 10,
+            modoAnulacao: editingProva.modo_anulacao || 'contar_certa',
+            tiposQuestoes: editingProva.tipos_questoes?.split(',') || [],
+            gabarito: editingProva.gabarito || '',
+            pesosQuestoes: editingProva.pesos_questoes?.split(',').map(Number) || [],
+          }
+          // Segunda chamada — pré-preencher com configs da prova original
+          if (segundaChamadaOrigemId) {
+            const orig = provas.find(p => p.id === segundaChamadaOrigemId)
+            if (orig) return {
+              data: new Date().toISOString().split('T')[0],
+              bloco: orig.bloco,
+              disciplinaId: orig.disciplina_id ? String(orig.disciplina_id) : '',
+              turmaId: orig.turma_id ? String(orig.turma_id) : '',
+              tipoProva: orig.tipo_prova || 'objetiva',
+              numQuestoes: orig.num_questoes,
+              numAlternativas: orig.num_alternativas,
+              criterioDiscursiva: orig.criterio_discursiva || 3,
+              modoAvaliacao: orig.modo_avaliacao,
+              notaTotal: orig.nota_total || 10,
+              modoAnulacao: orig.modo_anulacao || 'contar_certa',
+              tiposQuestoes: orig.tipos_questoes?.split(',') || [],
+              gabarito: orig.gabarito || '',
+              pesosQuestoes: orig.pesos_questoes?.split(',').map(Number) || [],
+            }
+          }
+          return undefined
+        })()}
       />
 
       {/* ════════════════════════════════════════════════ */}
@@ -804,7 +822,7 @@ function ProvasPage() {
                   ))}
                 </div>
                 <p className="text-xs text-gray-500">
-                  Uma nova prova será criada com o mesmo gabarito e configurações. Na correção, apenas os alunos ausentes serão exibidos.
+                  Ao prosseguir, o formulário de criação abrirá pré-preenchido com as configurações da prova original. Você poderá ajustar data, tipo, gabarito e demais opções antes de salvar.
                 </p>
               </>
             )}
@@ -812,12 +830,12 @@ function ProvasPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setSegundaChamadaProva(null)}>Cancelar</Button>
             <Button
-              onClick={handleSegundaChamada}
-              disabled={criarSegundaChamada || alunosAusentes.length === 0}
+              onClick={handleProsseguirSegundaChamada}
+              disabled={alunosAusentes.length === 0}
               className="gap-2"
             >
-              {criarSegundaChamada ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-              {criarSegundaChamada ? 'Criando...' : 'Criar Segunda Chamada'}
+              <RotateCcw className="h-4 w-4" />
+              Prosseguir
             </Button>
           </DialogFooter>
         </DialogContent>
