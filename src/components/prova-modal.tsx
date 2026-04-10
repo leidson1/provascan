@@ -19,6 +19,7 @@ export interface ProvaFormData {
   bloco: string
   disciplinaId: string
   turmaId: string
+  turmaIds: string[]
   tipoProva: 'objetiva' | 'mista' | 'discursiva'
   numQuestoes: number
   numAlternativas: number
@@ -108,6 +109,7 @@ export function ProvaModal({
   const [bloco, setBloco] = useState('B1')
   const [disciplinaId, setDisciplinaId] = useState('')
   const [turmaId, setTurmaId] = useState('')
+  const [turmaIds, setTurmaIds] = useState<string[]>([])
   const [tipoProva, setTipoProva] = useState<'objetiva' | 'mista' | 'discursiva'>('objetiva')
   const [numQuestoes, setNumQuestoes] = useState(10)
   const [numAlternativas, setNumAlternativas] = useState(5)
@@ -131,6 +133,7 @@ export function ProvaModal({
       setBloco(i?.bloco || 'B1')
       setDisciplinaId(i?.disciplinaId || '')
       setTurmaId(i?.turmaId || '')
+      setTurmaIds(i?.turmaIds && i.turmaIds.length > 0 ? i.turmaIds : (i?.turmaId ? [i.turmaId] : []))
       setTipoProva(i?.tipoProva || 'objetiva')
       setNumQuestoes(i?.numQuestoes || 10)
       setNumAlternativas(i?.numAlternativas || 5)
@@ -168,9 +171,10 @@ export function ProvaModal({
     for (let i = 0; i < numQuestoes; i++) {
       if (finalTipos[i] === 'D' && gabArr[i] !== 'D') gabArr[i] = 'D'
     }
+    const finalTurmaIds = editMode ? [turmaId] : turmaIds.length > 0 ? turmaIds : (turmaId ? [turmaId] : [])
     onSave({
-      data, bloco, disciplinaId, turmaId, tipoProva, numQuestoes,
-      numAlternativas, criterioDiscursiva, modoAvaliacao, notaTotal,
+      data, bloco, disciplinaId, turmaId: finalTurmaIds[0] || '', turmaIds: finalTurmaIds,
+      tipoProva, numQuestoes, numAlternativas, criterioDiscursiva, modoAvaliacao, notaTotal,
       modoAnulacao, tiposQuestoes: finalTipos,
       gabarito: gabArr.join(','), pesosQuestoes,
     })
@@ -234,8 +238,46 @@ export function ProvaModal({
                 <Dropdown label="Selecione a disciplina..." value={disciplinaId} options={discOpts} onChange={setDisciplinaId} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Turma</Label>
-                <Dropdown label="Selecione a turma..." value={turmaId} options={turmaOpts} onChange={setTurmaId} />
+                <Label className="text-sm font-medium">
+                  Turma{!editMode && 's'}
+                  {!editMode && turmaIds.length > 1 && (
+                    <span className="ml-2 text-xs font-normal text-indigo-600">
+                      ({turmaIds.length} selecionada{turmaIds.length > 1 ? 's' : ''} — será criada uma prova para cada)
+                    </span>
+                  )}
+                </Label>
+                {editMode ? (
+                  <Dropdown label="Selecione a turma..." value={turmaId} options={turmaOpts} onChange={setTurmaId} />
+                ) : (
+                  <div className="max-h-36 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                    {turmaOpts.map(t => (
+                      <label key={t.value} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          checked={turmaIds.includes(t.value)}
+                          onChange={(e) => {
+                            setTurmaIds(prev =>
+                              e.target.checked
+                                ? [...prev, t.value]
+                                : prev.filter(id => id !== t.value)
+                            )
+                            // Keep turmaId in sync with first selected
+                            if (e.target.checked && !turmaId) setTurmaId(t.value)
+                            if (!e.target.checked && turmaId === t.value) {
+                              const remaining = turmaIds.filter(id => id !== t.value)
+                              setTurmaId(remaining[0] || '')
+                            }
+                          }}
+                        />
+                        <span className="text-sm text-gray-700">{t.label}</span>
+                      </label>
+                    ))}
+                    {turmaOpts.length === 0 && (
+                      <p className="text-xs text-gray-400 py-3 text-center">Nenhuma turma cadastrada</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">

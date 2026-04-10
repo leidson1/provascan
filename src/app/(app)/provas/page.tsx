@@ -322,16 +322,30 @@ function ProvasPage() {
     if (editingProva) {
       const res = await supabase.from('provas').update(fullPayload).eq('id', editingProva.id)
       error = res.error
+    } else if (formData.turmaIds && formData.turmaIds.length > 1 && !segundaChamadaOrigemId) {
+      // Múltiplas turmas — criar uma prova para cada
+      const inserts = formData.turmaIds.map(tid => ({
+        ...fullPayload,
+        turma_id: Number(tid),
+      }))
+      const res = await supabase.from('provas').insert(inserts)
+      error = res.error
     } else {
       const res = await supabase.from('provas').insert(fullPayload)
       error = res.error
     }
 
     const isSegunda = !!segundaChamadaOrigemId
+    const isMulti = !editingProva && !isSegunda && formData.turmaIds && formData.turmaIds.length > 1
     if (error) {
       toast.error(editingProva ? 'Erro ao atualizar prova' : isSegunda ? 'Erro ao criar 2ª chamada' : 'Erro ao criar prova')
     } else {
-      toast.success(editingProva ? 'Prova atualizada!' : isSegunda ? '2ª chamada criada!' : 'Prova criada com sucesso!')
+      toast.success(
+        editingProva ? 'Prova atualizada!'
+          : isSegunda ? '2ª chamada criada!'
+          : isMulti ? `${formData.turmaIds.length} provas criadas para ${formData.turmaIds.length} turmas!`
+          : 'Prova criada com sucesso!'
+      )
       setProvaDialogOpen(false)
       setSegundaChamadaOrigemId(null)
       fetchAll()

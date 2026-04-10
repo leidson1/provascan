@@ -329,13 +329,38 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500">Visão geral do seu ProvaScan</p>
         </div>
-        {isGestor && (
-          <Button onClick={() => router.push('/provas?nova=1')}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nova Prova
-          </Button>
-        )}
+        <Button variant="outline" onClick={() => {
+          localStorage.removeItem('provascan_tutorial_seen')
+          router.push('/ajuda')
+        }} className="gap-2">
+          <BookOpen className="h-4 w-4" />
+          Tutorial
+        </Button>
       </div>
+
+      {/* ═══ BANNER DE NOVIDADES ═══ */}
+      <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white mt-0.5">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-emerald-900 text-sm">Novidades do ProvaScan</h3>
+              <ul className="mt-1 text-xs text-emerald-800 space-y-0.5 list-disc list-inside">
+                <li>Selecione várias turmas ao criar uma prova — o sistema cria uma para cada</li>
+                <li>2ª chamada automática para alunos ausentes</li>
+                <li>Progresso de correção visível na tabela de provas</li>
+                <li>Estatísticas completas com distribuição, ranking e notas</li>
+                <li>Duplique provas para outras turmas em um clique</li>
+              </ul>
+              <Link href="/ajuda" className="text-xs font-semibold text-emerald-700 underline mt-2 inline-block hover:text-emerald-900">
+                Ver tutorial completo
+              </Link>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ═══ STAT CARDS (clicáveis) ═══ */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
