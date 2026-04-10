@@ -497,6 +497,7 @@ function ProvasPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-14 text-center">#</TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('data')}>
                     <span className="inline-flex items-center gap-1">Data <PSortIcon col="data" /></span>
                   </TableHead>
@@ -520,6 +521,7 @@ function ProvasPage() {
               <TableBody>
                 {sortedProvas.map((prova) => (
                   <TableRow key={prova.id}>
+                    <TableCell className="text-center text-xs text-muted-foreground font-mono">{prova.id}</TableCell>
                     <TableCell className="font-medium">{formatDate(prova.data)}</TableCell>
                     <TableCell>{prova.disciplina?.nome ?? '\u2014'}</TableCell>
                     <TableCell>
