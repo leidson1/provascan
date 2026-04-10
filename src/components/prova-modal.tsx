@@ -194,7 +194,7 @@ export function ProvaModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px] p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[540px] p-0 gap-0">
         {/* ── Header ── */}
         <DialogHeader className="px-6 pt-5 pb-3">
           <DialogTitle className="text-lg font-bold">

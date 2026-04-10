@@ -692,7 +692,7 @@ function ProvasPage() {
       {/*  MODAL: Gabarito                                */}
       {/* ════════════════════════════════════════════════ */}
       <Dialog open={gabaritoDialogOpen} onOpenChange={setGabaritoDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               Gabarito
