@@ -148,7 +148,7 @@ create table if not exists public.resultados (
   aluno_id bigint not null references alunos(id) on delete cascade,
   presenca text,
   respostas jsonb,
-  acertos int,
+  acertos numeric(6,2),
   percentual numeric(5,2),
   nota numeric(6,2),
   created_at timestamptz default now(),
