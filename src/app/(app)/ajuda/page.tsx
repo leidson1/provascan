@@ -174,6 +174,12 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     categoria: 'Provas',
     icon: BarChart3,
+    pergunta: 'Como gero uma prova de recuperação?',
+    resposta: 'Após corrigir a prova, clique no menu (3 pontinhos) e selecione "Recuperação". O sistema mostrará todos os alunos presentes com suas notas ou percentuais. Defina a média de corte (editável, padrão 60% ou nota 6.0) — quem estiver abaixo será pré-selecionado. Você pode adicionar ou remover alunos manualmente com os checkboxes. Ao prosseguir, o formulário de criação abrirá pré-preenchido. A prova aparecerá com o badge roxo "Recuperação".',
+  },
+  {
+    categoria: 'Provas',
+    icon: BarChart3,
     pergunta: 'O que significa a coluna "Progresso" na lista de provas?',
     resposta: 'A coluna Progresso mostra quantos alunos já foram corrigidos do total da turma (ex: 15/30). Quando todos estão corrigidos, o indicador fica verde. Amarelo significa correção parcial e cinza significa que ninguém foi corrigido ainda.',
   },
@@ -263,12 +269,14 @@ export default function AjudaPage() {
             <div>
               <h3 className="font-semibold text-emerald-900 text-sm">Novidades - Abril 2026</h3>
               <ul className="mt-1 text-xs text-emerald-800 space-y-0.5 list-disc list-inside">
+                <li>Recuperação automática para alunos abaixo da média</li>
                 <li>2ª chamada para alunos ausentes</li>
-                <li>Duplicar prova para varias turmas de uma vez</li>
-                <li>Progresso de correcao visivel na tabela de provas</li>
-                <li>Estatisticas melhoradas com distribuicao e notas (max, min, mediana)</li>
-                <li>Aviso antes de substituir correcoes existentes</li>
-                <li>Fontes maiores nos cartoes-resposta impressos</li>
+                <li>Selecione várias turmas ao criar uma prova</li>
+                <li>Duplique provas para outras turmas em um clique</li>
+                <li>Progresso de correção e faltas visíveis na tabela</li>
+                <li>Estatísticas completas com distribuição, ranking e notas</li>
+                <li>Aviso antes de substituir correções existentes</li>
+                <li>Fontes maiores nos cartões-resposta impressos</li>
               </ul>
             </div>
           </div>

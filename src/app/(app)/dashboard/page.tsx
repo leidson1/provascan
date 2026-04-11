@@ -105,7 +105,7 @@ const TIPS = [
   },
   {
     icon: RotateCcw,
-    text: 'Crie provas de 2ª chamada automaticamente para alunos ausentes.',
+    text: 'Crie provas de 2ª chamada para ausentes ou recuperação para quem ficou abaixo da média!',
     link: '/ajuda',
     color: 'bg-orange-50 text-orange-700',
     iconColor: 'text-orange-500',
@@ -348,11 +348,12 @@ export default function DashboardPage() {
             <div className="flex-1">
               <h3 className="font-semibold text-emerald-900 text-sm">Novidades do ProvaScan</h3>
               <ul className="mt-1 text-xs text-emerald-800 space-y-0.5 list-disc list-inside">
-                <li>Selecione várias turmas ao criar uma prova — o sistema cria uma para cada</li>
-                <li>2ª chamada automática para alunos ausentes</li>
-                <li>Progresso de correção visível na tabela de provas</li>
-                <li>Estatísticas completas com distribuição, ranking e notas</li>
+                <li>Recuperação automática para alunos abaixo da média — com seleção manual</li>
+                <li>2ª chamada para alunos ausentes</li>
+                <li>Selecione várias turmas ao criar uma prova</li>
                 <li>Duplique provas para outras turmas em um clique</li>
+                <li>Progresso de correção e faltas visíveis na tabela</li>
+                <li>Estatísticas completas com distribuição, ranking e notas</li>
               </ul>
               <Link href="/ajuda" className="text-xs font-semibold text-emerald-700 underline mt-2 inline-block hover:text-emerald-900">
                 Ver tutorial completo
