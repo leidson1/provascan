@@ -79,6 +79,8 @@ export interface Prova {
   criterio_discursiva: number
   modo_anulacao: 'contar_certa' | 'redistribuir'
   prova_origem_id: number | null
+  tipo_vinculo: string | null
+  alunos_selecionados: number[] | null
   created_at: string
   // Joined fields
   disciplina?: Disciplina

@@ -189,8 +189,13 @@ export default function CorrecaoPage() {
 
       let alunosList = (alunosData ?? []) as Aluno[]
 
+      // Se é recuperação, filtrar por alunos selecionados
+      if (p.tipo_vinculo === 'recuperacao' && p.alunos_selecionados) {
+        const selecionadosIds = new Set(p.alunos_selecionados as number[])
+        alunosList = alunosList.filter(a => selecionadosIds.has(a.id))
+      }
       // Se é segunda chamada, filtrar só alunos ausentes na prova original
-      if (p.prova_origem_id) {
+      else if (p.prova_origem_id) {
         const { data: origemResultados } = await supabase
           .from('resultados')
           .select('aluno_id')
@@ -450,8 +455,13 @@ export default function CorrecaoPage() {
 
   return (
     <div className="space-y-4">
-      {/* Banner segunda chamada */}
-      {prova.prova_origem_id && (
+      {/* Banner segunda chamada / recuperação */}
+      {prova.tipo_vinculo === 'recuperacao' && (
+        <div className="rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800">
+          <strong>Recuperação</strong> — mostrando apenas os {alunos.length} aluno(s) selecionado(s) para recuperação.
+        </div>
+      )}
+      {prova.prova_origem_id && prova.tipo_vinculo !== 'recuperacao' && (
         <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
           <strong>2ª Chamada</strong> — mostrando apenas os {alunos.length} aluno(s) ausente(s) na prova original.
         </div>

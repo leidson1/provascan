@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, FileText, MoreVertical, ClipboardCheck, BookOpen,
   BarChart3, CreditCard, Trash2, Pencil, Save, Loader2, CheckCircle2,
-  ArrowUpDown, ArrowUp, ArrowDown, Copy, RotateCcw
+  ArrowUpDown, ArrowUp, ArrowDown, Copy, RotateCcw, TrendingDown
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -47,6 +47,8 @@ interface ProvaRow {
   modo_anulacao: 'contar_certa' | 'redistribuir'
   pesos_questoes: string | null
   prova_origem_id: number | null
+  tipo_vinculo: string | null
+  alunos_selecionados: number[] | null
   created_at: string
   disciplina: { nome: string } | null
   turma: { serie: string; turma: string } | null
@@ -140,6 +142,15 @@ function ProvasPage() {
   const [alunosAusentes, setAlunosAusentes] = useState<AlunoAusente[]>([])
   const [loadingAusentes, setLoadingAusentes] = useState(false)
   const [segundaChamadaOrigemId, setSegundaChamadaOrigemId] = useState<number | null>(null)
+
+  // Recuperação states
+  type AlunoRecuperacao = { id: number; nome: string; numero: number | null; valor: number; selecionado: boolean }
+  const [recuperacaoProva, setRecuperacaoProva] = useState<ProvaRow | null>(null)
+  const [alunosRecuperacao, setAlunosRecuperacao] = useState<AlunoRecuperacao[]>([])
+  const [loadingRecuperacao, setLoadingRecuperacao] = useState(false)
+  const [mediaCorte, setMediaCorte] = useState(60)
+  const [recuperacaoOrigemId, setRecuperacaoOrigemId] = useState<number | null>(null)
+  const [recuperacaoAlunoIds, setRecuperacaoAlunoIds] = useState<number[]>([])
 
   // Sort
   const [sortKey, setSortKey] = useState<'data' | 'disciplina' | 'turma' | 'questoes' | 'status'>('data')
@@ -262,8 +273,11 @@ function ProvasPage() {
       for (const p of provasList) {
         p.resultados_count = resCounts[p.id] || 0
         p.faltas_count = faltaCounts[p.id] || 0
-        if (p.prova_origem_id) {
-          // Segunda chamada: total = faltas da prova original
+        if (p.tipo_vinculo === 'recuperacao' && p.alunos_selecionados) {
+          // Recuperação: total = alunos selecionados
+          p.alunos_count = (p.alunos_selecionados as number[]).length
+        } else if (p.prova_origem_id) {
+          // 2ª chamada: total = faltas da prova original
           p.alunos_count = faltaCounts[p.prova_origem_id] || 0
         } else {
           p.alunos_count = p.turma_id ? (alunoCounts[p.turma_id] || 0) : 0
@@ -313,16 +327,19 @@ function ProvasPage() {
       pesos_questoes: formData.pesosQuestoes.join(','),
     }
 
-    // Se é segunda chamada, vincular à prova original
-    const fullPayload = segundaChamadaOrigemId
-      ? { ...payload, prova_origem_id: segundaChamadaOrigemId }
-      : payload
+    // Se é segunda chamada ou recuperação, vincular à prova original
+    let fullPayload = payload as Record<string, unknown>
+    if (segundaChamadaOrigemId) {
+      fullPayload = { ...payload, prova_origem_id: segundaChamadaOrigemId, tipo_vinculo: '2a_chamada' }
+    } else if (recuperacaoOrigemId) {
+      fullPayload = { ...payload, prova_origem_id: recuperacaoOrigemId, tipo_vinculo: 'recuperacao', alunos_selecionados: recuperacaoAlunoIds }
+    }
 
     let error
     if (editingProva) {
       const res = await supabase.from('provas').update(fullPayload).eq('id', editingProva.id)
       error = res.error
-    } else if (formData.turmaIds && formData.turmaIds.length > 1 && !segundaChamadaOrigemId) {
+    } else if (formData.turmaIds && formData.turmaIds.length > 1 && !segundaChamadaOrigemId && !recuperacaoOrigemId) {
       // Múltiplas turmas — criar uma prova para cada
       const inserts = formData.turmaIds.map(tid => ({
         ...fullPayload,
@@ -336,18 +353,22 @@ function ProvasPage() {
     }
 
     const isSegunda = !!segundaChamadaOrigemId
-    const isMulti = !editingProva && !isSegunda && formData.turmaIds && formData.turmaIds.length > 1
+    const isRecuperacao = !!recuperacaoOrigemId
+    const isMulti = !editingProva && !isSegunda && !isRecuperacao && formData.turmaIds && formData.turmaIds.length > 1
     if (error) {
-      toast.error(editingProva ? 'Erro ao atualizar prova' : isSegunda ? 'Erro ao criar 2ª chamada' : 'Erro ao criar prova')
+      toast.error(editingProva ? 'Erro ao atualizar prova' : isSegunda ? 'Erro ao criar 2ª chamada' : isRecuperacao ? 'Erro ao criar recuperação' : 'Erro ao criar prova')
     } else {
       toast.success(
         editingProva ? 'Prova atualizada!'
           : isSegunda ? '2ª chamada criada!'
+          : isRecuperacao ? 'Recuperação criada!'
           : isMulti ? `${formData.turmaIds.length} provas criadas para ${formData.turmaIds.length} turmas!`
           : 'Prova criada com sucesso!'
       )
       setProvaDialogOpen(false)
       setSegundaChamadaOrigemId(null)
+      setRecuperacaoOrigemId(null)
+      setRecuperacaoAlunoIds([])
       fetchAll()
     }
     setSaving(false)
@@ -452,10 +473,67 @@ function ProvasPage() {
   function handleProsseguirSegundaChamada() {
     if (!segundaChamadaProva) return
     const p = segundaChamadaProva
-    // Guardar origem e abrir ProvaModal pré-preenchido
     setSegundaChamadaOrigemId(p.id)
     setEditingProva(null)
     setSegundaChamadaProva(null)
+    setProvaDialogOpen(true)
+  }
+
+  // ── Open recuperação modal ──
+  async function openRecuperacao(prova: ProvaRow) {
+    setRecuperacaoProva(prova)
+    setLoadingRecuperacao(true)
+    setAlunosRecuperacao([])
+
+    // Média de corte padrão: 6.0 se modo=nota, 60% se modo=acertos
+    const defaultCorte = prova.modo_avaliacao === 'nota' ? (prova.nota_total ? prova.nota_total * 0.6 : 6) : 60
+    setMediaCorte(defaultCorte)
+
+    const { data } = await supabase
+      .from('resultados')
+      .select('aluno_id, acertos, percentual, nota, presenca, aluno:alunos(id, nome, numero)')
+      .eq('prova_id', prova.id)
+      .in('presenca', ['P', '*'])
+
+    const alunos: AlunoRecuperacao[] = (data ?? [])
+      .filter((r: { aluno?: { id: number; nome: string; numero: number | null } | null }) => r.aluno)
+      .map((r: { aluno?: { id: number; nome: string; numero: number | null } | null; nota?: number | null; percentual?: number | null }) => {
+        const valor = prova.modo_avaliacao === 'nota' ? (r.nota ?? 0) : (r.percentual ?? 0)
+        return {
+          id: r.aluno!.id,
+          nome: r.aluno!.nome,
+          numero: r.aluno!.numero,
+          valor,
+          selecionado: valor < defaultCorte,
+        }
+      })
+      .sort((a: AlunoRecuperacao, b: AlunoRecuperacao) => a.valor - b.valor)
+
+    setAlunosRecuperacao(alunos)
+    setLoadingRecuperacao(false)
+  }
+
+  function handleMediaCorteChange(novaMedia: number) {
+    setMediaCorte(novaMedia)
+    setAlunosRecuperacao(prev => prev.map(a => ({
+      ...a,
+      selecionado: a.valor < novaMedia,
+    })))
+  }
+
+  function toggleAlunoRecuperacao(alunoId: number) {
+    setAlunosRecuperacao(prev => prev.map(a =>
+      a.id === alunoId ? { ...a, selecionado: !a.selecionado } : a
+    ))
+  }
+
+  function handleProsseguirRecuperacao() {
+    if (!recuperacaoProva) return
+    const selecionados = alunosRecuperacao.filter(a => a.selecionado).map(a => a.id)
+    setRecuperacaoOrigemId(recuperacaoProva.id)
+    setRecuperacaoAlunoIds(selecionados)
+    setEditingProva(null)
+    setRecuperacaoProva(null)
     setProvaDialogOpen(true)
   }
 
@@ -561,7 +639,10 @@ function ProvasPage() {
                     <TableCell>
                       <span className="inline-flex items-center gap-1.5">
                         {statusBadge(prova.status)}
-                        {prova.prova_origem_id && (
+                        {prova.prova_origem_id && prova.tipo_vinculo === 'recuperacao' && (
+                          <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 text-[10px]">Recuperação (Prova #{prova.prova_origem_id})</Badge>
+                        )}
+                        {prova.prova_origem_id && prova.tipo_vinculo !== 'recuperacao' && (
                           <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-[10px]">2ª Chamada (Prova #{prova.prova_origem_id})</Badge>
                         )}
                       </span>
@@ -623,9 +704,14 @@ function ProvasPage() {
                             </DropdownMenuItem>
                           )}
                           {!isCorretor && prova.resultados_count !== undefined && prova.resultados_count > 0 && (
-                            <DropdownMenuItem onClick={() => openSegundaChamada(prova)}>
-                              <RotateCcw className="mr-2 h-4 w-4" /> 2ª Chamada
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem onClick={() => openSegundaChamada(prova)}>
+                                <RotateCcw className="mr-2 h-4 w-4" /> 2ª Chamada
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openRecuperacao(prova)}>
+                                <TrendingDown className="mr-2 h-4 w-4" /> Recuperação
+                              </DropdownMenuItem>
+                            </>
                           )}
                           {isDono && (
                             <>
@@ -653,7 +739,7 @@ function ProvasPage() {
         open={provaDialogOpen}
         onOpenChange={(open) => {
           setProvaDialogOpen(open)
-          if (!open) setSegundaChamadaOrigemId(null)
+          if (!open) { setSegundaChamadaOrigemId(null); setRecuperacaoOrigemId(null); setRecuperacaoAlunoIds([]) }
         }}
         disciplinas={disciplinas}
         turmas={turmas}
@@ -681,6 +767,26 @@ function ProvasPage() {
           // Segunda chamada — pré-preencher com configs da prova original
           if (segundaChamadaOrigemId) {
             const orig = provas.find(p => p.id === segundaChamadaOrigemId)
+            if (orig) return {
+              data: new Date().toISOString().split('T')[0],
+              bloco: orig.bloco,
+              disciplinaId: orig.disciplina_id ? String(orig.disciplina_id) : '',
+              turmaId: orig.turma_id ? String(orig.turma_id) : '',
+              tipoProva: orig.tipo_prova || 'objetiva',
+              numQuestoes: orig.num_questoes,
+              numAlternativas: orig.num_alternativas,
+              criterioDiscursiva: orig.criterio_discursiva || 3,
+              modoAvaliacao: orig.modo_avaliacao,
+              notaTotal: orig.nota_total || 10,
+              modoAnulacao: orig.modo_anulacao || 'contar_certa',
+              tiposQuestoes: orig.tipos_questoes?.split(',') || [],
+              gabarito: orig.gabarito || '',
+              pesosQuestoes: orig.pesos_questoes?.split(',').map(Number) || [],
+            }
+          }
+          // Recuperação — pré-preencher com configs da prova original
+          if (recuperacaoOrigemId) {
+            const orig = provas.find(p => p.id === recuperacaoOrigemId)
             if (orig) return {
               data: new Date().toISOString().split('T')[0],
               bloco: orig.bloco,
@@ -856,6 +962,107 @@ function ProvasPage() {
               className="gap-2"
             >
               <RotateCcw className="h-4 w-4" />
+              Prosseguir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════════════════════════════════════════════ */}
+      {/*  MODAL: Recuperação                              */}
+      {/* ════════════════════════════════════════════════ */}
+      <Dialog open={recuperacaoProva !== null} onOpenChange={(open) => !open && setRecuperacaoProva(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Gerar Recuperação</DialogTitle>
+            <DialogDescription>
+              {recuperacaoProva?.disciplina?.nome ?? 'Prova'} &mdash;{' '}
+              {recuperacaoProva?.turma ? `${recuperacaoProva.turma.serie} ${recuperacaoProva.turma.turma}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {loadingRecuperacao ? (
+              <div className="flex justify-center py-4">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-200 border-t-purple-600" />
+              </div>
+            ) : alunosRecuperacao.length === 0 ? (
+              <p className="text-sm text-gray-500 py-2">Nenhum aluno com presença registrada nesta prova.</p>
+            ) : (
+              <>
+                {/* Média de corte */}
+                <div className="flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 p-3">
+                  <label className="text-sm font-medium text-purple-800 whitespace-nowrap">
+                    {recuperacaoProva?.modo_avaliacao === 'nota' ? 'Nota mínima:' : 'Percentual mínimo:'}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={recuperacaoProva?.modo_avaliacao === 'nota' ? 0.5 : 5}
+                    value={mediaCorte}
+                    onChange={e => handleMediaCorteChange(Number(e.target.value))}
+                    className="w-20 h-8 rounded-md border border-purple-300 bg-white px-2 text-sm text-center font-semibold text-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  />
+                  <span className="text-xs text-purple-600">
+                    {recuperacaoProva?.modo_avaliacao === 'nota'
+                      ? `de ${recuperacaoProva?.nota_total ?? 10}`
+                      : '%'}
+                  </span>
+                </div>
+
+                {/* Lista de alunos */}
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    {alunosRecuperacao.filter(a => a.selecionado).length} de {alunosRecuperacao.length} aluno(s) selecionado(s)
+                  </p>
+                  <div className="max-h-56 overflow-y-auto space-y-1">
+                    {alunosRecuperacao.map(a => (
+                      <label
+                        key={a.id}
+                        className={cn(
+                          'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
+                          a.selecionado
+                            ? 'border-purple-300 bg-purple-50'
+                            : 'border-gray-200 hover:bg-gray-50'
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          checked={a.selecionado}
+                          onChange={() => toggleAlunoRecuperacao(a.id)}
+                        />
+                        <span className="text-gray-400 text-xs w-6 shrink-0">{a.numero ?? '-'}</span>
+                        <span className="flex-1 text-sm font-medium text-gray-800 truncate">{a.nome}</span>
+                        <span className={cn(
+                          'text-xs font-semibold px-2 py-0.5 rounded-full shrink-0',
+                          a.valor < mediaCorte
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-green-100 text-green-700'
+                        )}>
+                          {recuperacaoProva?.modo_avaliacao === 'nota'
+                            ? a.valor.toFixed(1)
+                            : `${a.valor.toFixed(0)}%`}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  Ao prosseguir, o formulário de criação abrirá pré-preenchido. Você pode ajustar data, tipo, gabarito e demais opções.
+                  Na correção e nos cartões, apenas os alunos selecionados serão exibidos.
+                </p>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecuperacaoProva(null)}>Cancelar</Button>
+            <Button
+              onClick={handleProsseguirRecuperacao}
+              disabled={alunosRecuperacao.filter(a => a.selecionado).length === 0}
+              className="gap-2 bg-purple-600 hover:bg-purple-700"
+            >
+              <TrendingDown className="h-4 w-4" />
               Prosseguir
             </Button>
           </DialogFooter>
