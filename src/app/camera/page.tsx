@@ -2,24 +2,15 @@
 
 export const dynamic = 'force-dynamic'
 
-import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { Prova, Aluno, Resultado } from '@/types/database'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
+import type { OMRResult as EngineOMRResult, OMREngine } from '@/lib/omr/engine'
 
 // ── Types ──────────────────────────────────────────────────────
-interface OMRResult {
-  alunoId: number | null
-  respostas: string[]
-  confianca: number
-  debug?: {
-    imageDataUrl?: string
-    levels?: string
-  }
-}
-
 interface SessionEntry {
   alunoId: number
   respostas: string[]
@@ -28,6 +19,17 @@ interface SessionEntry {
 }
 
 type Screen = 'auth' | 'setup' | 'camera' | 'result' | 'summary'
+type ProvaWithRelations = Prova & {
+  disciplina?: { nome: string }
+  turma?: { serie: string; turma: string }
+}
+type ExistingResultRef = { id: number }
+type CaptureNoticeTone = 'info' | 'warning' | 'error'
+type CaptureNotice = {
+  tone: CaptureNoticeTone
+  title: string
+  message: string
+}
 
 // ── Helpers ────────────────────────────────────────────────────
 const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
@@ -77,7 +79,7 @@ async function resizeImage(file: File, maxSize: number): Promise<HTMLCanvasEleme
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
-      let { width, height } = img
+      const { width, height } = img
 
       // Determinar se precisa trocar largura/altura (rotações 90°/270°)
       const needsSwap = orientation >= 5 && orientation <= 8
@@ -144,7 +146,7 @@ async function getExifOrientation(file: File): Promise<number> {
 
       if (marker === 0xFFE1) {
         // APP1 (EXIF)
-        const length = view.getUint16(offset)
+        view.getUint16(offset)
         offset += 2
 
         // Verificar "Exif\0\0"
@@ -179,6 +181,26 @@ async function getExifOrientation(file: File): Promise<number> {
     // Falha ao ler EXIF, assumir orientação normal
   }
   return 1
+}
+
+function getOMRWarnings(respostas?: EngineOMRResult['respostas']): string[] {
+  if (!respostas) return []
+
+  return respostas.flatMap((resposta) => {
+    if (resposta.status === 'ambigua') return [`Q${resposta.questao}: dupla marcação`]
+    if (resposta.status === 'vazia') return [`Q${resposta.questao}: sem marcação`]
+    return []
+  })
+}
+
+function hasUsableOMRRead(respostas?: EngineOMRResult['respostas']): boolean {
+  return !!respostas?.some((resposta) => resposta.status === 'ok' || resposta.status === 'ambigua')
+}
+
+function getCaptureNoticeClasses(tone: CaptureNoticeTone): string {
+  if (tone === 'error') return 'border border-red-800/60 bg-red-950/40 text-red-100'
+  if (tone === 'warning') return 'border border-amber-700/50 bg-amber-950/40 text-amber-100'
+  return 'border border-sky-800/50 bg-sky-950/40 text-sky-100'
 }
 
 // ── Wrapper with Suspense ────────────────────────────────────────
@@ -218,33 +240,34 @@ function CameraPage() {
   const [authError, setAuthError] = useState('')
 
   // Setup state
-  const [provas, setProvas] = useState<(Prova & { disciplina?: { nome: string }; turma?: { serie: string; turma: string } })[]>([])
+  const [provas, setProvas] = useState<ProvaWithRelations[]>([])
   const [selectedProvaId, setSelectedProvaId] = useState<number | null>(null)
   const [provasLoading, setProvasLoading] = useState(false)
 
   // Session state
-  const [prova, setProva] = useState<Prova | null>(null)
+  const [prova, setProva] = useState<ProvaWithRelations | null>(null)
   const [alunos, setAlunos] = useState<Aluno[]>([])
   const [gabarito, setGabarito] = useState<string[]>([])
-  const [existingResults, setExistingResults] = useState<Map<number, Resultado>>(new Map())
+  const [existingResults, setExistingResults] = useState<Map<number, ExistingResultRef>>(new Map())
   const [sessao, setSessao] = useState<SessionEntry[]>([])
 
   // Camera state
   const [processing, setProcessing] = useState(false)
   const [processingMsg, setProcessingMsg] = useState('')
   const [captureError, setCaptureError] = useState('')
+  const [captureNotice, setCaptureNotice] = useState<CaptureNotice | null>(null)
+  const [captureWarnings, setCaptureWarnings] = useState<string[]>([])
+  const [captureDebug, setCaptureDebug] = useState<EngineOMRResult['debug'] | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Result state
   const [currentRespostas, setCurrentRespostas] = useState<string[]>([])
   const [currentAlunoId, setCurrentAlunoId] = useState<number | null>(null)
   const [editingQuestion, setEditingQuestion] = useState<number | null>(null)
-  const [manualMode, setManualMode] = useState(false)
-
   // OMR engine
   const [omrReady, setOmrReady] = useState(false)
   const [omrLoading, setOmrLoading] = useState(true)
-  const omrEngineRef = useRef<any>(null)
+  const omrEngineRef = useRef<OMREngine | null>(null)
 
   // ── Check auth on mount ──
   useEffect(() => {
@@ -369,7 +392,7 @@ function CameraPage() {
   }
 
   // ── Start correction session ──
-  async function startSession(provaData: any) {
+  async function startSession(provaData: ProvaWithRelations) {
     setProva(provaData)
     setGabarito(parseGabarito(provaData.gabarito))
 
@@ -388,17 +411,21 @@ function CameraPage() {
     // Load existing results
     const { data: resultados } = await supabase
       .from('resultados')
-      .select('*, aluno:alunos(*)')
+      .select('id, aluno_id')
       .eq('prova_id', provaData.id)
 
-    const resultsMap = new Map<number, Resultado>()
+    const resultsMap = new Map<number, ExistingResultRef>()
     if (resultados) {
-      for (const r of resultados) {
-        resultsMap.set(r.aluno_id, r)
+      for (const r of resultados as Pick<Resultado, 'id' | 'aluno_id'>[]) {
+        resultsMap.set(r.aluno_id, { id: r.id })
       }
     }
     setExistingResults(resultsMap)
     setSessao([])
+    resetCaptureFeedback()
+    setCurrentRespostas([])
+    setCurrentAlunoId(null)
+    setEditingQuestion(null)
     setScreen('camera')
     toast.success('Sessão de correção iniciada')
   }
@@ -414,11 +441,44 @@ function CameraPage() {
   }
 
   // ── File capture ──
+  function resetCaptureFeedback() {
+    resetCaptureFeedback()
+    setCaptureNotice(null)
+    setCaptureWarnings([])
+    setCaptureDebug(null)
+  }
+
+  function showCaptureFailure(message: string, debug?: EngineOMRResult['debug'] | null) {
+    setCaptureError(message)
+    setCaptureNotice(null)
+    setCaptureWarnings([])
+    setCaptureDebug(debug ?? null)
+  }
+
+  function openResultReview(
+    respostas: string[],
+    alunoId: number | null,
+    options?: {
+      notice?: CaptureNotice | null
+      warnings?: string[]
+      debug?: EngineOMRResult['debug'] | null
+    }
+  ) {
+    resetCaptureFeedback()
+    setCaptureNotice(options?.notice ?? null)
+    setCaptureWarnings(options?.warnings ?? [])
+    setCaptureDebug(options?.debug ?? null)
+    setCurrentRespostas(respostas)
+    setCurrentAlunoId(alunoId)
+    setEditingQuestion(null)
+    setScreen('result')
+  }
+
   async function handleFileCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setCaptureError('')
+    resetCaptureFeedback()
     setProcessing(true)
     setProcessingMsg('Redimensionando imagem...')
 
@@ -431,46 +491,117 @@ function CameraPage() {
         const nq = prova?.num_questoes || gabarito.length
         const nalts = prova?.num_alternativas || 5
         const result = engine.process(
-          canvas, nq, nalts,
+          canvas,
+          nq,
+          nalts,
           prova?.tipos_questoes || undefined,
-          prova?.criterio_discursiva || undefined
-        )
+          prova?.criterio_discursiva || undefined,
+          prova?.id || undefined
+        ) as EngineOMRResult
 
         if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
-          // OMRResposta[] → string[] (extrair a letra marcada de cada questão)
+          const warnings = getOMRWarnings(result.respostas)
           const respostasLetras = result.respostas.map((r: { marcada: string | null }) =>
             r.marcada ? r.marcada.toUpperCase() : ''
           )
-          setCurrentRespostas(respostasLetras)
-          const alunoId = result.qr?.alunoId || null
-          setCurrentAlunoId(alunoId)
-          setManualMode(false)
-          setScreen('result')
+
+          if (!hasUsableOMRRead(result.respostas)) {
+            showCaptureFailure(
+              'O cart�o foi detectado, mas as marca��es n�o ficaram leg�veis o bastante para corrigir com seguran�a.',
+              result.debug ?? null
+            )
+            return
+          }
+
+          if (prova && result.qr?.provaId && result.qr.provaId !== prova.id) {
+            showCaptureFailure(
+              `Este cart�o pertence � prova ${result.qr.provaId}. Confira se a prova selecionada est� correta.`,
+              result.debug ?? null
+            )
+            return
+          }
+
+          if (!result.qr) {
+            openResultReview(respostasLetras, null, {
+              notice: {
+                tone: 'warning',
+                title: 'QR n�o lido',
+                message: 'As respostas foram lidas, mas o QR do aluno n�o foi identificado. Selecione o aluno abaixo e confira as quest�es destacadas.',
+              },
+              warnings,
+              debug: result.debug ?? null,
+            })
+            return
+          }
+
+          if (result.qr.reserva) {
+            openResultReview(respostasLetras, null, {
+              notice: {
+                tone: 'info',
+                title: 'Cart�o reserva',
+                message: 'O cart�o lido � de reserva. Selecione o aluno que usou este cart�o e confirme a corre��o.',
+              },
+              warnings,
+              debug: result.debug ?? null,
+            })
+            return
+          }
+
+          const alunoId = result.qr.alunoId ?? null
+          const alunoDaTurma = alunoId ? alunos.find((aluno) => aluno.id === alunoId) : null
+          if (alunoId && !alunoDaTurma) {
+            openResultReview(respostasLetras, null, {
+              notice: {
+                tone: 'warning',
+                title: 'Aluno n�o localizado',
+                message: 'O QR foi lido, mas o aluno n�o pertence � turma carregada. Confira se o cart�o � da turma correta.',
+              },
+              warnings,
+              debug: result.debug ?? null,
+            })
+            return
+          }
+
+          openResultReview(respostasLetras, alunoDaTurma?.id ?? alunoId, {
+            notice: warnings.length > 0 ? {
+              tone: 'warning',
+              title: 'Leitura com alerta',
+              message: 'Algumas quest�es ficaram vazias ou com dupla marca��o. Confira antes de confirmar.',
+            } : null,
+            warnings,
+            debug: result.debug ?? null,
+          })
         } else {
-          setCaptureError('Não foi possível ler o cartão. Tente novamente ou corrija manualmente.')
-          offerManualEntry()
+          showCaptureFailure(
+            result?.mensagem || 'N�o foi poss�vel ler o cart�o. Tente novamente com a foto mais n�tida.',
+            result?.debug ?? null
+          )
         }
       } else {
-        // No OMR engine, go straight to manual
-        offerManualEntry()
+        offerManualEntry({
+          tone: 'warning',
+          title: 'Leitura autom�tica indispon�vel',
+          message: 'O motor de leitura n�o carregou neste aparelho. Voc� ainda pode lan�ar a corre��o manualmente.',
+        })
       }
-    } catch (err: any) {
-      setCaptureError(err.message || 'Erro ao processar imagem')
-      offerManualEntry()
+    } catch (err: unknown) {
+      showCaptureFailure(err instanceof Error ? err.message : 'Erro ao processar imagem')
     } finally {
       setProcessing(false)
       setProcessingMsg('')
-      // Reset file input so same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  function offerManualEntry() {
+  function offerManualEntry(notice?: CaptureNotice | null) {
     const nq = prova?.num_questoes || gabarito.length
-    setCurrentRespostas(new Array(nq).fill(''))
-    setCurrentAlunoId(null)
-    setManualMode(true)
-    setScreen('result')
+    openResultReview(new Array(nq).fill(''), null, {
+      notice: notice || {
+        tone: 'info',
+        title: 'Corre��o manual',
+        message: 'Selecione o aluno e preencha as respostas abaixo para continuar.',
+      },
+    })
   }
 
   // ── Answer editing ──
@@ -538,7 +669,7 @@ function CameraPage() {
     const existing = existingResults.get(currentAlunoId)
     const payload = {
       user_id: userId,
-      workspace_id: (prova as any).workspace_id,
+      workspace_id: prova.workspace_id,
       prova_id: prova.id,
       aluno_id: currentAlunoId,
       presenca: 'P',
@@ -550,6 +681,7 @@ function CameraPage() {
     }
 
     let error
+    let savedResultId = existing?.id ?? null
     if (existing) {
       const res = await supabase
         .from('resultados')
@@ -557,8 +689,13 @@ function CameraPage() {
         .eq('id', existing.id)
       error = res.error
     } else {
-      const res = await supabase.from('resultados').insert(payload)
+      const res = await supabase
+        .from('resultados')
+        .insert(payload)
+        .select('id')
+        .single()
       error = res.error
+      savedResultId = res.data?.id ?? null
     }
 
     if (error) {
@@ -573,7 +710,7 @@ function CameraPage() {
     ])
     setExistingResults((prev) => {
       const next = new Map(prev)
-      next.set(currentAlunoId, { ...payload, id: existing?.id || 0 } as any)
+      next.set(currentAlunoId, { id: savedResultId || existing?.id || 0 })
       return next
     })
 
@@ -585,7 +722,7 @@ function CameraPage() {
     setCurrentRespostas([])
     setCurrentAlunoId(null)
     setEditingQuestion(null)
-    setManualMode(false)
+    resetCaptureFeedback()
     setScreen('camera')
   }
 
@@ -600,6 +737,7 @@ function CameraPage() {
     setGabarito([])
     setExistingResults(new Map())
     setSessao([])
+    resetCaptureFeedback()
     setCurrentRespostas([])
     setCurrentAlunoId(null)
     setSelectedProvaId(null)
@@ -622,11 +760,6 @@ function CameraPage() {
     return 'text-red-400'
   }
 
-  function scoreBg(pct: number): string {
-    if (pct >= 70) return 'bg-emerald-900/50'
-    if (pct >= 50) return 'bg-yellow-900/50'
-    return 'bg-red-900/50'
-  }
 
   // ── Loading screen ──
   if (!authChecked) {
@@ -811,8 +944,8 @@ function CameraPage() {
               <div>
                 <span className="text-slate-400">Prova: </span>
                 <span className="text-slate-100 font-semibold">
-                  {(prova as any).disciplina?.nome || 'Prova'} -{' '}
-                  {(prova as any).turma ? `${(prova as any).turma.serie} ${(prova as any).turma.turma}` : ''}
+                  {prova.disciplina?.nome || 'Prova'} -{' '}
+                  {prova.turma ? `${prova.turma.serie} ${prova.turma.turma}` : ''}
                 </span>
               </div>
               <div>
@@ -863,7 +996,7 @@ function CameraPage() {
 
               {/* Manual entry button */}
               <button
-                onClick={offerManualEntry}
+                onClick={() => offerManualEntry()}
                 className="w-full h-12 mt-2 rounded-lg text-indigo-300 text-sm hover:bg-slate-700/50 transition-colors"
               >
                 Correção Manual
@@ -874,6 +1007,20 @@ function CameraPage() {
                 <div className="mt-3 p-3 bg-red-900/50 text-red-300 rounded-lg text-sm text-left">
                   {captureError}
                 </div>
+              )}
+
+              {captureError && captureDebug && (
+                <details className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-left">
+                  <summary className="cursor-pointer text-sm font-medium text-slate-200">
+                    Diagnóstico OMR
+                  </summary>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={captureDebug.imageUrl}
+                    alt="Diagnóstico OMR"
+                    className="mt-3 w-full rounded-lg border border-slate-700"
+                  />
+                </details>
               )}
             </div>
 
@@ -894,6 +1041,37 @@ function CameraPage() {
         {/* ════════════════════════════════════════ */}
         {screen === 'result' && (
           <div className="bg-slate-800 rounded-xl p-4 mt-2">
+            {captureNotice && (
+              <div className={`mb-3 rounded-lg px-3 py-3 text-sm ${getCaptureNoticeClasses(captureNotice.tone)}`}>
+                <div className="font-semibold">{captureNotice.title}</div>
+                <div className="mt-1 text-xs sm:text-sm">{captureNotice.message}</div>
+              </div>
+            )}
+
+            {captureWarnings.length > 0 && (
+              <div className="mb-3 rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-3 text-xs text-amber-100">
+                <div className="font-semibold text-sm">Questões para conferir</div>
+                <div className="mt-1">
+                  {captureWarnings.slice(0, 6).join(' • ')}
+                  {captureWarnings.length > 6 ? ` • +${captureWarnings.length - 6} outras` : ''}
+                </div>
+              </div>
+            )}
+
+            {captureDebug && (
+              <details className="mb-3 rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-left">
+                <summary className="cursor-pointer text-sm font-medium text-slate-200">
+                  Diagnóstico OMR
+                </summary>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={captureDebug.imageUrl}
+                  alt="Diagnóstico OMR"
+                  className="mt-3 w-full rounded-lg border border-slate-700"
+                />
+              </details>
+            )}
+
             {/* Student selection */}
             <div className="mb-3">
               <label className="text-xs text-slate-400 block mb-1">Aluno</label>
@@ -1042,10 +1220,10 @@ function CameraPage() {
             <div className="flex gap-2.5 mt-2">
               <button
                 onClick={() => {
+                  resetCaptureFeedback()
                   setCurrentRespostas([])
                   setCurrentAlunoId(null)
                   setEditingQuestion(null)
-                  setManualMode(false)
                   setScreen('camera')
                 }}
                 className="flex-1 h-14 rounded-lg bg-red-600 text-white font-semibold text-sm hover:bg-red-700 active:scale-[0.97] transition-all"

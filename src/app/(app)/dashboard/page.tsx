@@ -139,10 +139,14 @@ export default function DashboardPage() {
 
   // Load dismissed tips from localStorage
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(DISMISSED_TIPS_KEY)
-      if (stored) setDismissedTips(JSON.parse(stored))
-    } catch { /* ignore */ }
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const stored = localStorage.getItem(DISMISSED_TIPS_KEY)
+        if (stored) setDismissedTips(JSON.parse(stored))
+      } catch { /* ignore */ }
+    })
+
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   function dismissTip(idx: number) {
@@ -531,7 +535,7 @@ export default function DashboardPage() {
             Dicas
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {visibleTips.slice(0, 3).map((tip, _idx) => {
+            {visibleTips.slice(0, 3).map((tip) => {
               const realIdx = TIPS.indexOf(tip)
               const Icon = tip.icon
               return (

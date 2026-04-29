@@ -1,14 +1,16 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Workspace, WorkspaceMember } from '@/types/database'
+
+type MembershipWithWorkspace = WorkspaceMember & { workspace: Workspace }
 
 interface WorkspaceContextType {
   workspaceId: number
   role: 'dono' | 'coordenador' | 'corretor'
   workspace: Workspace
-  memberships: (WorkspaceMember & { workspace: Workspace })[]
+  memberships: MembershipWithWorkspace[]
   switchWorkspace: (id: number) => void
   leaveWorkspace: (wsId: number) => Promise<boolean>
   refreshWorkspace: () => Promise<void>
@@ -26,42 +28,69 @@ interface Props {
   children: React.ReactNode
 }
 
+async function loadMembershipsData(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<MembershipWithWorkspace[]> {
+  const { data } = await supabase
+    .from('workspace_members')
+    .select('*, workspace:workspaces(*)')
+    .eq('user_id', userId)
+
+  return (data as unknown as MembershipWithWorkspace[]) ?? []
+}
+
 export function WorkspaceProvider({ userId, children }: Props) {
   const supabase = useMemo(() => createClient(), [])
-  const [memberships, setMemberships] = useState<(WorkspaceMember & { workspace: Workspace })[]>([])
+  const [memberships, setMemberships] = useState<MembershipWithWorkspace[]>([])
   const [currentWsId, setCurrentWsId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchMemberships = useCallback(async () => {
-    const { data } = await supabase
-      .from('workspace_members')
-      .select('*, workspace:workspaces(*)')
-      .eq('user_id', userId)
+  const applyMemberships = useCallback((typed: MembershipWithWorkspace[]) => {
+    setMemberships(typed)
 
-    if (data && data.length > 0) {
-      const typed = data as unknown as (WorkspaceMember & { workspace: Workspace })[]
-      setMemberships(typed)
-
-      // Restore from localStorage or default to first owned workspace
-      const stored = localStorage.getItem(STORAGE_KEY)
-      const storedId = stored ? Number(stored) : null
-      const valid = typed.find(m => m.workspace_id === storedId)
-
-      if (valid) {
-        setCurrentWsId(valid.workspace_id)
-      } else {
-        const owned = typed.find(m => m.role === 'dono')
-        const first = owned || typed[0]
-        setCurrentWsId(first.workspace_id)
-        localStorage.setItem(STORAGE_KEY, String(first.workspace_id))
-      }
+    if (typed.length === 0) {
+      setCurrentWsId(null)
+      return
     }
+
+    const stored = localStorage.getItem(STORAGE_KEY)
+    const storedId = stored ? Number(stored) : null
+    const valid = typed.find((membership) => membership.workspace_id === storedId)
+
+    if (valid) {
+      setCurrentWsId(valid.workspace_id)
+      return
+    }
+
+    const owned = typed.find((membership) => membership.role === 'dono')
+    const first = owned || typed[0]
+    setCurrentWsId(first.workspace_id)
+    localStorage.setItem(STORAGE_KEY, String(first.workspace_id))
+  }, [])
+
+  const fetchMemberships = useCallback(async () => {
+    const typed = await loadMembershipsData(supabase, userId)
+    applyMemberships(typed)
     setLoading(false)
-  }, [supabase, userId])
+  }, [applyMemberships, supabase, userId])
 
   useEffect(() => {
-    fetchMemberships()
-  }, [fetchMemberships])
+    let cancelled = false
+
+    async function syncMemberships() {
+      const typed = await loadMembershipsData(supabase, userId)
+      if (cancelled) return
+      applyMemberships(typed)
+      setLoading(false)
+    }
+
+    void syncMemberships()
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyMemberships, supabase, userId])
 
   const switchWorkspace = useCallback((id: number) => {
     setCurrentWsId(id)
@@ -69,8 +98,7 @@ export function WorkspaceProvider({ userId, children }: Props) {
   }, [])
 
   const leaveWorkspace = useCallback(async (wsId: number): Promise<boolean> => {
-    // Não pode sair de workspace onde é dono
-    const membership = memberships.find(m => m.workspace_id === wsId)
+    const membership = memberships.find((item) => item.workspace_id === wsId)
     if (!membership || membership.role === 'dono') return false
 
     const { error } = await supabase
@@ -81,10 +109,9 @@ export function WorkspaceProvider({ userId, children }: Props) {
 
     if (error) return false
 
-    // Se era o workspace ativo, trocar para o workspace próprio (dono)
     if (currentWsId === wsId) {
-      const owned = memberships.find(m => m.workspace_id !== wsId && m.role === 'dono')
-      const fallback = owned || memberships.find(m => m.workspace_id !== wsId)
+      const owned = memberships.find((item) => item.workspace_id !== wsId && item.role === 'dono')
+      const fallback = owned || memberships.find((item) => item.workspace_id !== wsId)
       if (fallback) {
         setCurrentWsId(fallback.workspace_id)
         localStorage.setItem(STORAGE_KEY, String(fallback.workspace_id))
@@ -93,21 +120,20 @@ export function WorkspaceProvider({ userId, children }: Props) {
 
     await fetchMemberships()
     return true
-  }, [supabase, userId, memberships, currentWsId, fetchMemberships])
+  }, [currentWsId, fetchMemberships, memberships, supabase, userId])
 
-  // Contagem de workspaces novos (não vistos)
   const newWorkspacesCount = useMemo(() => {
     if (typeof window === 'undefined') return 0
     try {
       const seen: number[] = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')
-      return memberships.filter(m => !seen.includes(m.workspace_id)).length
+      return memberships.filter((membership) => !seen.includes(membership.workspace_id)).length
     } catch {
       return 0
     }
   }, [memberships])
 
   const markAllSeen = useCallback(() => {
-    const ids = memberships.map(m => m.workspace_id)
+    const ids = memberships.map((membership) => membership.workspace_id)
     localStorage.setItem(SEEN_KEY, JSON.stringify(ids))
   }, [memberships])
 
@@ -119,7 +145,7 @@ export function WorkspaceProvider({ userId, children }: Props) {
     )
   }
 
-  const currentMembership = memberships.find(m => m.workspace_id === currentWsId)!
+  const currentMembership = memberships.find((membership) => membership.workspace_id === currentWsId)!
   const currentWorkspace = currentMembership.workspace
 
   return (
@@ -152,7 +178,6 @@ export function useIsDono() {
   return role === 'dono'
 }
 
-/** Dono ou Coordenador — pode criar, editar, corrigir (quase tudo) */
 export function useIsGestor() {
   const { role } = useWorkspace()
   return role === 'dono' || role === 'coordenador'

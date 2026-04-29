@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { Suspense, useEffect, useState, useMemo } from 'react'
+import { Suspense, useCallback, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, FileText, MoreVertical, ClipboardCheck, BookOpen,
@@ -112,7 +112,7 @@ function ProvasPage() {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { workspaceId, role } = useWorkspace()
+  const { workspaceId } = useWorkspace()
   const isGestor = useIsGestor()
   const isDono = useIsDono()
   const isCorretor = !isGestor
@@ -165,7 +165,7 @@ function ProvasPage() {
     }
   }
 
-  function PSortIcon({ col }: { col: typeof sortKey }) {
+  function renderSortIcon(col: typeof sortKey) {
     if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 text-gray-300" />
     return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
   }
@@ -192,23 +192,13 @@ function ProvasPage() {
   // Gabarito modal form
   const [formGabarito, setFormGabarito] = useState('')
 
-  useEffect(() => {
-    fetchAll()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-open create modal if ?nova=1
-  useEffect(() => {
-    if (searchParams.get('nova') === '1' && !isCorretor && !loading) {
-      setEditingProva(null)
-      setProvaDialogOpen(true)
-      // Clean the URL param
-      router.replace('/provas', { scroll: false })
-    }
-  }, [loading, searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      setLoading(false)
+      return
+    }
     setUserId(user.id)
 
     const [provasRes, discRes, turmaRes] = await Promise.all([
@@ -287,7 +277,28 @@ function ProvasPage() {
       setProvas(provasList)
     }
     setLoading(false)
-  }
+  }, [supabase, workspaceId])
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void fetchAll()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [fetchAll])
+
+  // Auto-open create modal if ?nova=1
+  useEffect(() => {
+    if (searchParams.get('nova') === '1' && !isCorretor && !loading) {
+      const frame = window.requestAnimationFrame(() => {
+        setEditingProva(null)
+        setProvaDialogOpen(true)
+        router.replace('/provas', { scroll: false })
+      })
+
+      return () => window.cancelAnimationFrame(frame)
+    }
+  }, [isCorretor, loading, router, searchParams])
 
   // ── Open gabarito modal ──
   function openGabaritoModal(prova: ProvaRow) {
@@ -591,20 +602,20 @@ function ProvasPage() {
                 <TableRow>
                   <TableHead className="w-14 text-center">#</TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('data')}>
-                    <span className="inline-flex items-center gap-1">Data <PSortIcon col="data" /></span>
+                    <span className="inline-flex items-center gap-1">Data {renderSortIcon('data')}</span>
                   </TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('disciplina')}>
-                    <span className="inline-flex items-center gap-1">Disciplina <PSortIcon col="disciplina" /></span>
+                    <span className="inline-flex items-center gap-1">Disciplina {renderSortIcon('disciplina')}</span>
                   </TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('turma')}>
-                    <span className="inline-flex items-center gap-1">Turma <PSortIcon col="turma" /></span>
+                    <span className="inline-flex items-center gap-1">Turma {renderSortIcon('turma')}</span>
                   </TableHead>
                   <TableHead className="cursor-pointer select-none text-center" onClick={() => toggleSort('questoes')}>
-                    <span className="inline-flex items-center gap-1 justify-center">Questões <PSortIcon col="questoes" /></span>
+                    <span className="inline-flex items-center gap-1 justify-center">Questões {renderSortIcon('questoes')}</span>
                   </TableHead>
                   <TableHead>Gabarito</TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('status')}>
-                    <span className="inline-flex items-center gap-1">Status <PSortIcon col="status" /></span>
+                    <span className="inline-flex items-center gap-1">Status {renderSortIcon('status')}</span>
                   </TableHead>
                   <TableHead className="text-center">Progresso</TableHead>
                   <TableHead className="w-10" />

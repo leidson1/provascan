@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Motor OMR v3.0 - Leitura Óptica de Marcações
  * Portado fielmente de OMR.html (sistema GAS original)
@@ -32,6 +33,8 @@ interface DebugLevel {
   status: string
 }
 
+type ParsedQRData = { provaId: number; alunoId: number | null; reserva?: string; raw: string } | null
+
 interface Marcadores {
   tl: Ponto
   tr: Ponto
@@ -53,9 +56,7 @@ declare global {
     cv: any
     jsQR: any
   }
-  // eslint-disable-next-line no-var
   var cv: any
-  // eslint-disable-next-line no-var
   var jsQR: any
 }
 
@@ -134,7 +135,8 @@ export class OMREngine {
     nq: number,
     nalts: number,
     tiposQuestoes?: string,
-    criterioDiscursiva?: number
+    criterioDiscursiva?: number,
+    expectedProvaId?: number
   ): OMRResult {
     nq = nq || 10
     nalts = nalts || 5
@@ -157,12 +159,10 @@ export class OMREngine {
       }
     }
     // Para compatibilidade, letras padrão (usado quando não há tipos)
-    const letras = letrasObj
 
     let src: any = null
     let gray: any = null
     let warped: any = null
-    let wGray: any = null
     const allMats: any[] = []
 
     try {
@@ -276,38 +276,55 @@ export class OMREngine {
       warped = this._corrigirPerspectiva(src, marcadores)
 
       // ── QR: progressivo (normal -> mediana -> escala) ──
-      const qrResult = this._lerQRProgressivo(warped)
+      let analise = this._analisarWarped(
+        warped,
+        nq,
+        nalts,
+        letrasPerQ,
+        tiposQuestoes,
+        criterioDiscursiva,
+        expectedProvaId
+      )
 
       // ── Bolhas: leitura direta + fallback ──
-      wGray = new cv.Mat()
-      cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
-      const respostas = this._lerBolhasMista(wGray, nq, nalts, letrasPerQ, tiposQuestoes, criterioDiscursiva)
+      if (!analise.qr) {
+        const warped180 = this._rotacionar180(warped)
+        try {
 
       // ── Debug: gerar imagem anotada da perspectiva corrigida ──
-      let debugData: { imageUrl: string; levels: DebugLevel[] } | undefined
-      try {
-        debugData = this._gerarDebugMista(warped, wGray, nq, nalts, respostas, tiposQuestoes, criterioDiscursiva)
-      } catch {
-        // debug falhou, ignora
+          const analise180 = this._analisarWarped(
+            warped180,
+            nq,
+            nalts,
+            letrasPerQ,
+            tiposQuestoes,
+            criterioDiscursiva,
+            expectedProvaId
+          )
+          if (analise180.score > analise.score) {
+            analise = analise180
+          }
+        } finally {
+          warped180.delete()
+        }
       }
 
       return {
         sucesso: true,
-        qr: qrResult ?? undefined,
-        respostas,
-        confianca: respostas.map((r) => r.confianca),
-        debug: debugData,
+        qr: analise.qr ?? undefined,
+        respostas: analise.respostas,
+        confianca: analise.respostas.map((r) => r.confianca),
+        debug: analise.debug,
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       return {
         sucesso: false,
-        mensagem: 'Erro no processamento: ' + (e?.message || e),
+        mensagem: 'Erro no processamento: ' + (e instanceof Error ? e.message : String(e)),
       }
     } finally {
       if (src) src.delete()
       if (gray) gray.delete()
       if (warped) warped.delete()
-      if (wGray) wGray.delete()
       for (const m of allMats) {
         if (m) m.delete()
       }
@@ -315,6 +332,78 @@ export class OMREngine {
   }
 
   // ── NORMALIZAÇÃO DE ILUMINAÇÃO (leve, sem CLAHE pesado) ────
+
+  private _analisarWarped(
+    warped: any,
+    nq: number,
+    nalts: number,
+    letrasPerQ: string[][],
+    tiposQuestoes?: string,
+    criterioDiscursiva?: number,
+    expectedProvaId?: number
+  ): {
+    qr: ParsedQRData
+    respostas: OMRResposta[]
+    debug?: { imageUrl: string; levels: DebugLevel[] }
+    score: number
+  } {
+    const qr = this._lerQRProgressivo(warped)
+    const wGray = new cv.Mat()
+
+    try {
+      cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
+      const respostas = this._lerBolhasMista(wGray, nq, nalts, letrasPerQ, tiposQuestoes, criterioDiscursiva)
+
+      let debug: { imageUrl: string; levels: DebugLevel[] } | undefined
+      try {
+        debug = this._gerarDebugMista(warped, wGray, nq, nalts, respostas, tiposQuestoes, criterioDiscursiva)
+      } catch {
+        // debug falhou, ignora
+      }
+
+      return {
+        qr,
+        respostas,
+        debug,
+        score: this._pontuarAnalise(qr, respostas, expectedProvaId),
+      }
+    } finally {
+      wGray.delete()
+    }
+  }
+
+  private _pontuarAnalise(
+    qr: ParsedQRData,
+    respostas: OMRResposta[],
+    expectedProvaId?: number
+  ): number {
+    let score = 0
+
+    if (qr) {
+      score += 1000
+      if (expectedProvaId != null) {
+        score += qr.provaId === expectedProvaId ? 2000 : -250
+      }
+    }
+
+    for (const resposta of respostas) {
+      if (resposta.status === 'ok') {
+        score += 25 + resposta.confianca
+      } else if (resposta.status === 'ambigua') {
+        score += 4
+      } else {
+        score -= 6
+      }
+    }
+
+    return score
+  }
+
+  private _rotacionar180(src: any): any {
+    const rotated = new cv.Mat()
+    cv.flip(src, rotated, -1)
+    return rotated
+  }
 
   private _normalizarIluminacao(gray: any): any {
     const bg = new cv.Mat()
@@ -410,7 +499,7 @@ export class OMREngine {
 
     if (candidatos.length < 4) return null
 
-    let selected: Ponto[] | null = candidatos.length > 4
+    const selected: Ponto[] | null = candidatos.length > 4
       ? this._selecionar4Melhores(candidatos)
       : candidatos
 
@@ -572,8 +661,8 @@ export class OMREngine {
   ): ReturnType<typeof this._parseQRData> {
     const rx = Math.max(0, Math.round(area.x * px))
     const ry = Math.max(0, Math.round(area.y * px))
-    let rw = Math.min(Math.round(area.w * px), mat.cols - rx)
-    let rh = Math.min(Math.round(area.h * px), mat.rows - ry)
+    const rw = Math.min(Math.round(area.w * px), mat.cols - rx)
+    const rh = Math.min(Math.round(area.h * px), mat.rows - ry)
     if (rw <= 0 || rh <= 0) return null
 
     let roi: any = null

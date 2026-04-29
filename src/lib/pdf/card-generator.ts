@@ -4,9 +4,8 @@
  */
 
 import jsPDF from 'jspdf'
-// @ts-ignore - qrcode-generator types
 import qrcode from 'qrcode-generator'
-import { CARTAO, calcPosicoesBolhas, calcLinhaAltura } from '@/lib/omr/card-layout'
+import { CARTAO, calcLinhaAltura } from '@/lib/omr/card-layout'
 
 // ── Types ──────────────────────────────────────────────────
 

@@ -85,10 +85,14 @@ export function TutorialModal() {
   const [step, setStep] = useState(0)
 
   useEffect(() => {
-    const seen = localStorage.getItem(STORAGE_KEY)
-    if (seen !== TUTORIAL_VERSION) {
-      setVisible(true)
-    }
+    const frame = window.requestAnimationFrame(() => {
+      const seen = localStorage.getItem(STORAGE_KEY)
+      if (seen !== TUTORIAL_VERSION) {
+        setVisible(true)
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   function dismiss() {
