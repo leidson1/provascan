@@ -40,6 +40,22 @@ async function loadMembershipsData(
   return (data as unknown as MembershipWithWorkspace[]) ?? []
 }
 
+function readSeenWorkspaceIds(): number[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value))
+  } catch {
+    return []
+  }
+}
+
+function writeSeenWorkspaceIds(ids: number[]) {
+  localStorage.setItem(SEEN_KEY, JSON.stringify(Array.from(new Set(ids))))
+}
+
 export function WorkspaceProvider({ userId, children }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [memberships, setMemberships] = useState<MembershipWithWorkspace[]>([])
@@ -57,6 +73,18 @@ export function WorkspaceProvider({ userId, children }: Props) {
     const stored = localStorage.getItem(STORAGE_KEY)
     const storedId = stored ? Number(stored) : null
     const valid = typed.find((membership) => membership.workspace_id === storedId)
+    const seenIds = readSeenWorkspaceIds()
+    const unseenInvites = [...typed]
+      .filter((membership) => membership.role !== 'dono' && !seenIds.includes(membership.workspace_id))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    if (unseenInvites.length > 0) {
+      const newestInvite = unseenInvites[0]
+      setCurrentWsId(newestInvite.workspace_id)
+      localStorage.setItem(STORAGE_KEY, String(newestInvite.workspace_id))
+      writeSeenWorkspaceIds([...seenIds, newestInvite.workspace_id])
+      return
+    }
 
     if (valid) {
       setCurrentWsId(valid.workspace_id)
@@ -124,17 +152,13 @@ export function WorkspaceProvider({ userId, children }: Props) {
 
   const newWorkspacesCount = useMemo(() => {
     if (typeof window === 'undefined') return 0
-    try {
-      const seen: number[] = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')
-      return memberships.filter((membership) => !seen.includes(membership.workspace_id)).length
-    } catch {
-      return 0
-    }
+    const seen = readSeenWorkspaceIds()
+    return memberships.filter((membership) => !seen.includes(membership.workspace_id)).length
   }, [memberships])
 
   const markAllSeen = useCallback(() => {
     const ids = memberships.map((membership) => membership.workspace_id)
-    localStorage.setItem(SEEN_KEY, JSON.stringify(ids))
+    writeSeenWorkspaceIds(ids)
   }, [memberships])
 
   if (loading || !currentWsId) {

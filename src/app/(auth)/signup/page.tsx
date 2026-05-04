@@ -84,6 +84,7 @@ function SignUpForm() {
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
+    const acceptedTermsAt = new Date().toISOString();
 
     if (password !== confirmPassword) {
       toast.error("As senhas nao coincidem");
@@ -98,12 +99,13 @@ function SignUpForm() {
     setLoading(true);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           nome,
+          accepted_terms_at: acceptedTermsAt,
         },
       },
     });
@@ -122,6 +124,17 @@ function SignUpForm() {
       });
       setLoading(false);
       return;
+    }
+
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ accepted_terms_at: acceptedTermsAt })
+        .eq("id", data.user.id);
+
+      if (profileError) {
+        console.error("Erro ao registrar aceite dos termos:", profileError);
+      }
     }
 
     if (conviteToken) {

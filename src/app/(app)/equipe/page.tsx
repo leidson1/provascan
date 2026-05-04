@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { toast } from 'sonner'
-import { UserPlus, Trash2, Users, Copy, Loader2, Mail, Link2, Clock, X } from 'lucide-react'
+import { UserPlus, Trash2, Users, Copy, Loader2, Mail, Clock, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -114,7 +114,7 @@ export default function EquipePage() {
 
       setConvites((data as Convite[]) || [])
     } catch {
-      // tabela pode não existir ainda
+      // tabela pode nÃ£o existir ainda
       setConvites([])
     }
   }, [supabase, workspaceId])
@@ -165,7 +165,9 @@ export default function EquipePage() {
       })
 
       if (data.tipo === 'adicionado') {
-        toast.success('Professor adicionado com sucesso!')
+        toast.success('Professor adicionado com sucesso!', {
+          description: 'Nenhum e-mail foi enviado. Se ele nao lembrar a senha, deve usar a recuperacao no login.',
+        })
       } else {
         toast.success('Convite gerado!')
       }
@@ -173,7 +175,7 @@ export default function EquipePage() {
       fetchMembers()
       fetchConvites()
     } catch {
-      toast.error('Erro de conexão')
+      toast.error('Erro de conexÃ£o')
     } finally {
       setInviting(false)
     }
@@ -181,7 +183,7 @@ export default function EquipePage() {
 
   function copyInviteLink(link: string) {
     const nomeEscola = workspace.nome_instituicao || 'ProvaScan'
-    const text = `Olá! Você foi convidado(a) para a equipe *${nomeEscola}* no ProvaScan.\n\nClique no link abaixo para criar sua conta e entrar na equipe:\n${link}`
+    const text = `Ola! Voce foi convidado(a) para a equipe *${nomeEscola}* no ProvaScan.\n\nClique no link abaixo para criar sua conta ou entrar na conta existente e entrar na equipe:\n${link}`
     navigator.clipboard.writeText(text)
     toast.success('Link copiado! Cole no WhatsApp.')
   }
@@ -265,7 +267,7 @@ export default function EquipePage() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Papel</TableHead>
-                  <TableHead className="w-24">Ações</TableHead>
+                  <TableHead className="w-24">AÃ§Ãµes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -284,7 +286,7 @@ export default function EquipePage() {
                     </TableCell>
                     <TableCell>
                       {m.role === 'dono' ? (
-                        <span className="text-xs text-gray-400">(Você)</span>
+                        <span className="text-xs text-gray-400">(VocÃª)</span>
                       ) : (
                         <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700"
                           onClick={() => { setRemovingMember(m); setRemoveOpen(true) }}>
@@ -343,7 +345,7 @@ export default function EquipePage() {
         </Card>
       )}
 
-      {/* ── Invite Dialog ── */}
+      {/* â”€â”€ Invite Dialog â”€â”€ */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -351,7 +353,7 @@ export default function EquipePage() {
             <DialogDescription>
               {inviteResult
                 ? (inviteResult.tipo === 'adicionado'
-                  ? 'O professor já tinha conta e foi adicionado à equipe.'
+                  ? 'Este e-mail ja tinha conta. O acesso ao workspace foi liberado sem envio de convite por e-mail.'
                   : 'Envie o link abaixo por WhatsApp para o professor.')
                 : 'Digite o email do professor que deseja convidar.'}
             </DialogDescription>
@@ -359,12 +361,12 @@ export default function EquipePage() {
 
           {inviteResult ? (
             inviteResult.tipo === 'adicionado' ? (
-              /* ── Adicionado direto ── */
+              /* â”€â”€ Adicionado direto â”€â”€ */
               <div className="space-y-4">
                 <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-center">
                   <p className="text-sm text-emerald-700">
                     <strong>{inviteResult.nome || inviteResult.email}</strong> foi adicionado(a) como corretor(a).
-                    Ele(a) verá este workspace na próxima vez que entrar no ProvaScan.
+                    Ao entrar no ProvaScan, este workspace ficara disponivel no seletor. Se nao lembrar a senha, use &quot;Esqueci minha senha&quot;.
                   </p>
                 </div>
                 <DialogFooter>
@@ -372,7 +374,7 @@ export default function EquipePage() {
                 </DialogFooter>
               </div>
             ) : (
-              /* ── Link de convite ── */
+              /* â”€â”€ Link de convite â”€â”€ */
               <div className="space-y-4">
                 <div className="rounded-xl bg-indigo-50 border border-indigo-200 p-4 space-y-3">
                   <div>
@@ -399,7 +401,7 @@ export default function EquipePage() {
               </div>
             )
           ) : (
-            /* ── Formulário ── */
+            /* â”€â”€ FormulÃ¡rio â”€â”€ */
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Email do professor</Label>
@@ -418,20 +420,20 @@ export default function EquipePage() {
                   onChange={e => setFormRole(e.target.value as 'coordenador' | 'corretor')}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  <option value="corretor">Corretor — Corrige provas e vê estatísticas</option>
-                  <option value="coordenador">Coordenador — Cria e edita provas, turmas e disciplinas</option>
+                  <option value="corretor">Corretor â€” Corrige provas e vÃª estatÃ­sticas</option>
+                  <option value="coordenador">Coordenador â€” Cria e edita provas, turmas e disciplinas</option>
                 </select>
               </div>
               <div>
                 <p className="text-[11px] text-gray-400">
-                  Se o professor já tiver conta, será adicionado direto. Se não, um link de convite será gerado.
+                  Se o professor ja tiver conta, ele sera adicionado direto e nao recebera e-mail automatico. Se nao tiver, um link de convite sera gerado.
                 </p>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancelar</Button>
                 <Button onClick={handleInvite} disabled={inviting} className="gap-2">
                   {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                  {inviting ? 'Enviando...' : 'Convidar'}
+                  {inviting ? 'Processando...' : 'Convidar'}
                 </Button>
               </DialogFooter>
             </div>
@@ -439,7 +441,7 @@ export default function EquipePage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Remove Dialog ── */}
+      {/* â”€â”€ Remove Dialog â”€â”€ */}
       <Dialog open={removeOpen} onOpenChange={setRemoveOpen}>
         <DialogContent>
           <DialogHeader>
