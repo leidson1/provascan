@@ -1,9 +1,9 @@
 "use client";
 
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -18,13 +18,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Loader2, ScanLine } from "lucide-react";
+import { Loader2, ScanLine, UserPlus } from "lucide-react";
 
-export default function LoginPage() {
+function buildInvitePath(basePath: string, conviteToken: string | null) {
+  if (!conviteToken) return basePath;
+
+  const params = new URLSearchParams({ convite: conviteToken });
+  return `${basePath}?${params.toString()}`;
+}
+
+function buildCallbackRedirect(nextPath: string) {
+  return `${window.location.origin}/callback?next=${encodeURIComponent(nextPath)}`;
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const conviteToken = searchParams.get("convite");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const acceptInvitePath = buildInvitePath("/aceitar-convite", conviteToken);
+  const forgotPasswordPath = buildInvitePath("/recuperar-senha", conviteToken);
+  const signUpPath = buildInvitePath("/signup", conviteToken);
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -48,16 +66,21 @@ export default function LoginPage() {
       return;
     }
 
-    toast.success("Login realizado com sucesso!");
-    router.push("/dashboard");
+    toast.success(
+      conviteToken
+        ? "Login realizado. Vamos concluir seu convite."
+        : "Login realizado com sucesso!",
+    );
+    router.push(conviteToken ? acceptInvitePath : "/dashboard");
   }
 
   async function handleGoogleLogin() {
     const supabase = createClient();
+    const nextPath = conviteToken ? acceptInvitePath : "/dashboard";
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/callback`,
+        redirectTo: buildCallbackRedirect(nextPath),
       },
     });
 
@@ -70,16 +93,24 @@ export default function LoginPage() {
 
   return (
     <Card className="w-full max-w-md">
-      <CardHeader className="text-center space-y-2">
-        <div className="flex items-center justify-center gap-2 mb-2">
+      <CardHeader className="space-y-2 text-center">
+        <div className="mb-2 flex items-center justify-center gap-2">
           <ScanLine className="h-8 w-8 text-indigo-500" />
           <span className="text-2xl font-bold tracking-tight">ProvaScan</span>
         </div>
         <CardTitle className="text-xl">Bem-vindo de volta</CardTitle>
-        <CardDescription>
-          Entre na sua conta para continuar
-        </CardDescription>
+        <CardDescription>Entre na sua conta para continuar</CardDescription>
       </CardHeader>
+
+      {conviteToken && (
+        <div className="mx-6 mb-2 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <UserPlus className="h-4 w-4 shrink-0 text-blue-500" />
+          <p className="text-xs text-blue-700">
+            Este link tambem funciona para quem ja tem conta. Entre para aceitar
+            o convite da equipe.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleEmailLogin}>
         <CardContent className="space-y-4">
@@ -97,11 +128,19 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Senha</Label>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="password">Senha</Label>
+              <Link
+                href={forgotPasswordPath}
+                className="text-xs font-medium text-indigo-500 transition-colors hover:text-indigo-400"
+              >
+                Esqueci minha senha
+              </Link>
+            </div>
             <Input
               id="password"
               type="password"
-              placeholder="••••••••"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -154,15 +193,31 @@ export default function LoginPage() {
 
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
-          Não tem conta?{" "}
+          Nao tem conta?{" "}
           <Link
-            href="/signup"
-            className="font-medium text-indigo-500 hover:text-indigo-400 transition-colors"
+            href={signUpPath}
+            className="font-medium text-indigo-500 transition-colors hover:text-indigo-400"
           >
             Cadastre-se
           </Link>
         </p>
       </CardFooter>
     </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <Card className="w-full max-w-md">
+          <CardContent className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+          </CardContent>
+        </Card>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }
