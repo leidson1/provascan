@@ -216,7 +216,7 @@ export class OMREngine {
       if (!marcadores && candidatosWarp.length === 0) {
         return {
           sucesso: false,
-          mensagem: 'Marcadores não detectados. Enquadre todo o cartão com boa iluminação.',
+          mensagem: 'Não foi possível localizar a folha. Enquadre todo o cartão com boa iluminação e contraste.',
         }
       }
 
@@ -237,99 +237,6 @@ export class OMREngine {
             score: number
           }
         | null = null
-      /* if (hLeft > wTop * 1.15) {
-        // Imagem está em retrato mas cartão é paisagem → rotacionar 90°
-        const tmp = marcadores
-        marcadores = { tl: tmp.bl, tr: tmp.tl, bl: tmp.br, br: tmp.tr }
-      }
-
-      // Verificar se está de cabeça para baixo (180°)
-      // O QR Code fica no canto superior esquerdo do cartão
-      // Após perspectiva, a região do QR deve ter mais conteúdo escuro
-      // Heurística: comparar densidade no quadrante TL vs BR
-      try {
-        const testWarped = this._corrigirPerspectiva(src, marcadores)
-        const testGray = new cv.Mat()
-        cv.cvtColor(testWarped, testGray, cv.COLOR_RGBA2GRAY)
-        const testBin = new cv.Mat()
-        cv.threshold(testGray, testBin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
-
-        const px = OMREngine.PX_MM
-        const qrRegion = { x: Math.round(10 * px), y: Math.round(20 * px), w: Math.round(26 * px), h: Math.round(26 * px) }
-
-        // Região do QR (TL)
-        const rx = Math.max(0, qrRegion.x)
-        const ry = Math.max(0, qrRegion.y)
-        const rw = Math.min(qrRegion.w, testBin.cols - rx)
-        const rh = Math.min(qrRegion.h, testBin.rows - ry)
-
-        if (rw > 0 && rh > 0) {
-          const roiTL = testBin.roi(new cv.Rect(rx, ry, rw, rh))
-          const densidadeTL = cv.countNonZero(roiTL) / (rw * rh)
-          roiTL.delete()
-
-          // Região espelho (BR)
-          const brx = Math.max(0, testBin.cols - rx - rw)
-          const bry = Math.max(0, testBin.rows - ry - rh)
-          const brw = Math.min(rw, testBin.cols - brx)
-          const brh = Math.min(rh, testBin.rows - bry)
-
-          if (brw > 0 && brh > 0) {
-            const roiBR = testBin.roi(new cv.Rect(brx, bry, brw, brh))
-            const densidadeBR = cv.countNonZero(roiBR) / (brw * brh)
-            roiBR.delete()
-
-            // Se o QR está no canto oposto (BR muito mais denso que TL), está de cabeça para baixo
-            if (densidadeBR > densidadeTL * 1.5 && densidadeBR > 0.15) {
-              const tmp = marcadores
-              marcadores = { tl: tmp.br, tr: tmp.bl, bl: tmp.tr, br: tmp.tl }
-            }
-          }
-        }
-
-        testBin.delete()
-        testGray.delete()
-        testWarped.delete()
-      } catch {
-        // Falha na detecção de 180°, continua sem corrigir
-      }
-
-      warped = this._corrigirPerspectiva(src, marcadores)
-
-      // ── QR: progressivo (normal -> mediana -> escala) ──
-      let analise = this._analisarWarped(
-        warped,
-        nq,
-        nalts,
-        letrasPerQ,
-        tiposQuestoes,
-        criterioDiscursiva,
-        expectedProvaId
-      )
-
-      // ── Bolhas: leitura direta + fallback ──
-      if (!analise.qr) {
-        const warped180 = this._rotacionar180(warped)
-        try {
-
-      // ── Debug: gerar imagem anotada da perspectiva corrigida ──
-          const analise180 = this._analisarWarped(
-            warped180,
-            nq,
-            nalts,
-            letrasPerQ,
-            tiposQuestoes,
-            criterioDiscursiva,
-            expectedProvaId
-          )
-          if (analise180.score > analise.score) {
-            analise = analise180
-          }
-        } finally {
-          warped180.delete()
-        }
-      } */
-
       for (const candidatoWarp of candidatosWarp) {
         const tentativa = this._analisarMelhorOrientacao(
           candidatoWarp,
@@ -428,35 +335,46 @@ export class OMREngine {
     debug?: { imageUrl: string; levels: DebugLevel[] }
     score: number
   } {
-    let analise = this._analisarWarped(
-      warped,
-      nq,
-      nalts,
-      letrasPerQ,
-      tiposQuestoes,
-      criterioDiscursiva,
-      expectedProvaId
-    )
+    const orientacoes = [
+      { mat: warped, owns: false },
+      { mat: this._rotacionar90Horario(warped), owns: true },
+      { mat: this._rotacionar180(warped), owns: true },
+      { mat: this._rotacionar90AntiHorario(warped), owns: true },
+    ]
 
-    const warped180 = this._rotacionar180(warped)
+    let melhor:
+      | {
+          qr: ParsedQRData
+          respostas: OMRResposta[]
+          debug?: { imageUrl: string; levels: DebugLevel[] }
+          score: number
+        }
+      | null = null
+
     try {
-      const analise180 = this._analisarWarped(
-        warped180,
-        nq,
-        nalts,
-        letrasPerQ,
-        tiposQuestoes,
-        criterioDiscursiva,
-        expectedProvaId
-      )
-      if (analise180.score > analise.score) {
-        analise = analise180
+      for (const orientacao of orientacoes) {
+        const analise = this._analisarWarped(
+          orientacao.mat,
+          nq,
+          nalts,
+          letrasPerQ,
+          tiposQuestoes,
+          criterioDiscursiva,
+          expectedProvaId
+        )
+        if (!melhor || analise.score > melhor.score) {
+          melhor = analise
+        }
       }
     } finally {
-      warped180.delete()
+      for (const orientacao of orientacoes) {
+        if (orientacao.owns) {
+          orientacao.mat.delete()
+        }
+      }
     }
 
-    return analise
+    return melhor!
   }
 
   private _pontuarAnalise(
@@ -489,6 +407,36 @@ export class OMREngine {
   private _rotacionar180(src: any): any {
     const rotated = new cv.Mat()
     cv.flip(src, rotated, -1)
+    return rotated
+  }
+
+  private _rotacionar90Horario(src: any): any {
+    const rotated = new cv.Mat()
+
+    if (typeof cv.rotate === 'function' && typeof cv.ROTATE_90_CLOCKWISE !== 'undefined') {
+      cv.rotate(src, rotated, cv.ROTATE_90_CLOCKWISE)
+      return rotated
+    }
+
+    const transposed = new cv.Mat()
+    cv.transpose(src, transposed)
+    cv.flip(transposed, rotated, 1)
+    transposed.delete()
+    return rotated
+  }
+
+  private _rotacionar90AntiHorario(src: any): any {
+    const rotated = new cv.Mat()
+
+    if (typeof cv.rotate === 'function' && typeof cv.ROTATE_90_COUNTERCLOCKWISE !== 'undefined') {
+      cv.rotate(src, rotated, cv.ROTATE_90_COUNTERCLOCKWISE)
+      return rotated
+    }
+
+    const transposed = new cv.Mat()
+    cv.transpose(src, transposed)
+    cv.flip(transposed, rotated, 0)
+    transposed.delete()
     return rotated
   }
 
