@@ -27,10 +27,6 @@ function buildInvitePath(basePath: string, conviteToken: string | null) {
   return `${basePath}?${params.toString()}`;
 }
 
-function buildCallbackRedirect(nextPath: string) {
-  return `${window.location.origin}/callback?next=${encodeURIComponent(nextPath)}`;
-}
-
 function ForgotPasswordForm() {
   const searchParams = useSearchParams();
   const conviteToken = searchParams.get("convite");
@@ -47,7 +43,7 @@ function ForgotPasswordForm() {
 
     const supabase = createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: buildCallbackRedirect(resetPasswordPath),
+      redirectTo: `${window.location.origin}${resetPasswordPath}`,
     });
 
     if (error) {

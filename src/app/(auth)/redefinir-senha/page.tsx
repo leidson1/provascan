@@ -28,6 +28,7 @@ function buildInvitePath(basePath: string, conviteToken: string | null) {
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const authCode = searchParams.get("code");
   const conviteToken = searchParams.get("convite");
 
   const [password, setPassword] = useState("");
@@ -40,6 +41,13 @@ function ResetPasswordForm() {
     const supabase = createClient();
 
     async function checkUser() {
+      if (authCode) {
+        const { error } = await supabase.auth.exchangeCodeForSession(authCode);
+        if (error) {
+          throw error;
+        }
+      }
+
       const response = await supabase.auth.getUser();
       if (!active) return;
 
@@ -61,7 +69,7 @@ function ResetPasswordForm() {
     return () => {
       active = false;
     };
-  }, [conviteToken, router]);
+  }, [authCode, conviteToken, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
