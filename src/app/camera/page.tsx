@@ -40,6 +40,9 @@ type CaptureNotice = {
 
 // ── Helpers ────────────────────────────────────────────────────
 const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+// O scanner ao vivo continua pronto no projeto, mas fica desligado
+// ate estabilizarmos completamente a captura por foto nativa.
+const ENABLE_LIVE_SCANNER = false
 
 function parseGabarito(raw: string | null): string[] {
   if (!raw) return []
@@ -1116,19 +1119,32 @@ function CameraPage() {
                 Enquadre todo o cartão com boa iluminação.
               </p>
 
-              <LiveScanner
-                disabled={processing || omrLoading}
-                onCapture={handleLiveCapture}
-              />
+              {ENABLE_LIVE_SCANNER ? (
+                <>
+                  <LiveScanner
+                    disabled={processing || omrLoading}
+                    onCapture={handleLiveCapture}
+                  />
 
-              <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-left">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Plano B
+                  <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-left">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      Plano B
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Abra a camera ou galeria do aparelho se o scanner ao vivo nao estiver bom neste celular.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-left">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Captura recomendada
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Use a camera do proprio celular, ative o flash se precisar e enquadre a folha inteira antes de confirmar a foto.
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">
-                  Abra a camera ou galeria do aparelho se o scanner ao vivo nao estiver bom neste celular.
-                </p>
-              </div>
+              )}
 
               {/* File input trigger */}
               <label className="mt-3 block w-full cursor-pointer">
@@ -1152,7 +1168,7 @@ function CameraPage() {
                     </>
                   ) : (
                     <>
-                      <span>&#128248;</span> Usar Foto do Aparelho
+                      <span>&#128248;</span> Abrir Camera do Aparelho
                     </>
                   )}
                 </div>

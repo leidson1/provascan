@@ -289,7 +289,8 @@ export class OMREngine {
     letrasPerQ: string[][],
     tiposQuestoes?: string,
     criterioDiscursiva?: number,
-    expectedProvaId?: number
+    expectedProvaId?: number,
+    includeDebug = true
   ): {
     qr: ParsedQRData
     respostas: OMRResposta[]
@@ -304,10 +305,12 @@ export class OMREngine {
       const respostas = this._lerBolhasMista(wGray, nq, nalts, letrasPerQ, tiposQuestoes, criterioDiscursiva)
 
       let debug: { imageUrl: string; levels: DebugLevel[] } | undefined
-      try {
-        debug = this._gerarDebugMista(warped, wGray, nq, nalts, respostas, tiposQuestoes, criterioDiscursiva)
-      } catch {
-        // debug falhou, ignora
+      if (includeDebug) {
+        try {
+          debug = this._gerarDebugMista(warped, wGray, nq, nalts, respostas, tiposQuestoes, criterioDiscursiva)
+        } catch {
+          // debug falhou, ignora
+        }
       }
 
       return {
@@ -350,9 +353,11 @@ export class OMREngine {
           score: number
         }
       | null = null
+    let melhorOrientacao = 0
 
     try {
-      for (const orientacao of orientacoes) {
+      for (let idx = 0; idx < orientacoes.length; idx++) {
+        const orientacao = orientacoes[idx]
         const analise = this._analisarWarped(
           orientacao.mat,
           nq,
@@ -360,12 +365,31 @@ export class OMREngine {
           letrasPerQ,
           tiposQuestoes,
           criterioDiscursiva,
-          expectedProvaId
+          expectedProvaId,
+          false
         )
         if (!melhor || analise.score > melhor.score) {
           melhor = analise
+          melhorOrientacao = idx
+        }
+
+        if (this._atingiuScoreConfiavel(analise, nq, expectedProvaId)) {
+          melhor = analise
+          melhorOrientacao = idx
+          break
         }
       }
+
+      melhor = this._analisarWarped(
+        orientacoes[melhorOrientacao].mat,
+        nq,
+        nalts,
+        letrasPerQ,
+        tiposQuestoes,
+        criterioDiscursiva,
+        expectedProvaId,
+        true
+      )
     } finally {
       for (const orientacao of orientacoes) {
         if (orientacao.owns) {
@@ -375,6 +399,28 @@ export class OMREngine {
     }
 
     return melhor!
+  }
+
+  private _atingiuScoreConfiavel(
+    analise: {
+      qr: ParsedQRData
+      respostas: OMRResposta[]
+      score: number
+    },
+    nq: number,
+    expectedProvaId?: number
+  ): boolean {
+    if (!analise.qr) return false
+    if (expectedProvaId != null && analise.qr.provaId !== expectedProvaId) return false
+
+    let ok = 0
+    let ambiguas = 0
+    for (const resposta of analise.respostas) {
+      if (resposta.status === 'ok') ok++
+      else if (resposta.status === 'ambigua') ambiguas++
+    }
+
+    return ok >= Math.max(1, Math.floor(nq * 0.8)) && ambiguas === 0
   }
 
   private _pontuarAnalise(
