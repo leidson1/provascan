@@ -162,7 +162,6 @@ export class OMREngine {
 
     let src: any = null
     let gray: any = null
-    let warped: any = null
     const allMats: any[] = []
 
     try {
@@ -178,6 +177,16 @@ export class OMREngine {
       const bin1 = new cv.Mat()
       cv.threshold(blurred, bin1, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
       allMats.push(blurred, bin1)
+
+      const candidatosWarp: any[] = []
+
+      const pagina = this._encontrarContornoPagina(normalizedGray) || this._encontrarContornoPagina(gray)
+      if (pagina) {
+        const paginaOrientada = this._alinharOrientacao(src, pagina, 'page')
+        const warpedPagina = this._corrigirPerspectivaPagina(src, paginaOrientada)
+        candidatosWarp.push(warpedPagina)
+        allMats.push(warpedPagina)
+      }
 
       let marcadores = this._encontrarMarcadores(bin1)
 
@@ -204,7 +213,7 @@ export class OMREngine {
         marcadores = this._encontrarMarcadores(bin3)
       }
 
-      if (!marcadores) {
+      if (!marcadores && candidatosWarp.length === 0) {
         return {
           sucesso: false,
           mensagem: 'Marcadores não detectados. Enquadre todo o cartão com boa iluminação.',
@@ -213,15 +222,22 @@ export class OMREngine {
 
       // Corrigir orientação: o cartão é paisagem (largura > altura)
       // Se os marcadores indicam retrato, rotacionar
-      const wTop = Math.hypot(
-        marcadores.tr.x - marcadores.tl.x,
-        marcadores.tr.y - marcadores.tl.y
-      )
-      const hLeft = Math.hypot(
-        marcadores.bl.x - marcadores.tl.x,
-        marcadores.bl.y - marcadores.tl.y
-      )
-      if (hLeft > wTop * 1.15) {
+      if (marcadores) {
+        const marcadoresOrientados = this._alinharOrientacao(src, marcadores, 'markers')
+        const warpedMarcadores = this._corrigirPerspectiva(src, marcadoresOrientados)
+        candidatosWarp.push(warpedMarcadores)
+        allMats.push(warpedMarcadores)
+      }
+
+      let analise:
+        | {
+            qr: ParsedQRData
+            respostas: OMRResposta[]
+            debug?: { imageUrl: string; levels: DebugLevel[] }
+            score: number
+          }
+        | null = null
+      /* if (hLeft > wTop * 1.15) {
         // Imagem está em retrato mas cartão é paisagem → rotacionar 90°
         const tmp = marcadores
         marcadores = { tl: tmp.bl, tr: tmp.tl, bl: tmp.br, br: tmp.tr }
@@ -312,6 +328,28 @@ export class OMREngine {
         } finally {
           warped180.delete()
         }
+      } */
+
+      for (const candidatoWarp of candidatosWarp) {
+        const tentativa = this._analisarMelhorOrientacao(
+          candidatoWarp,
+          nq,
+          nalts,
+          letrasPerQ,
+          tiposQuestoes,
+          criterioDiscursiva,
+          expectedProvaId
+        )
+        if (!analise || tentativa.score > analise.score) {
+          analise = tentativa
+        }
+      }
+
+      if (!analise) {
+        return {
+          sucesso: false,
+          mensagem: 'Falha ao analisar a folha capturada.',
+        }
       }
 
       return {
@@ -329,7 +367,6 @@ export class OMREngine {
     } finally {
       if (src) src.delete()
       if (gray) gray.delete()
-      if (warped) warped.delete()
       for (const m of allMats) {
         if (m) m.delete()
       }
@@ -375,6 +412,51 @@ export class OMREngine {
     } finally {
       wGray.delete()
     }
+  }
+
+  private _analisarMelhorOrientacao(
+    warped: any,
+    nq: number,
+    nalts: number,
+    letrasPerQ: string[][],
+    tiposQuestoes?: string,
+    criterioDiscursiva?: number,
+    expectedProvaId?: number
+  ): {
+    qr: ParsedQRData
+    respostas: OMRResposta[]
+    debug?: { imageUrl: string; levels: DebugLevel[] }
+    score: number
+  } {
+    let analise = this._analisarWarped(
+      warped,
+      nq,
+      nalts,
+      letrasPerQ,
+      tiposQuestoes,
+      criterioDiscursiva,
+      expectedProvaId
+    )
+
+    const warped180 = this._rotacionar180(warped)
+    try {
+      const analise180 = this._analisarWarped(
+        warped180,
+        nq,
+        nalts,
+        letrasPerQ,
+        tiposQuestoes,
+        criterioDiscursiva,
+        expectedProvaId
+      )
+      if (analise180.score > analise.score) {
+        analise = analise180
+      }
+    } finally {
+      warped180.delete()
+    }
+
+    return analise
   }
 
   private _pontuarAnalise(
@@ -531,6 +613,85 @@ export class OMREngine {
 
   // ── DETECÇÃO DE MARCADORES ────────────────────────────────
 
+  private _encontrarContornoPagina(gray: any): Marcadores | null {
+    const blurred = new cv.Mat()
+    const bin = new cv.Mat()
+    const closed = new cv.Mat()
+    const contours = new cv.MatVector()
+    const hierarchy = new cv.Mat()
+    let kernel: any = null
+    let best: Marcadores | null = null
+    let bestScore = Infinity
+
+    try {
+      cv.GaussianBlur(gray, blurred, new cv.Size(7, 7), 0)
+      cv.threshold(blurred, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+      kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9))
+      cv.morphologyEx(bin, closed, cv.MORPH_CLOSE, kernel)
+      cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+      const imgArea = gray.rows * gray.cols
+      const targetRatio = CARTAO.largura / CARTAO.altura
+      const imgDiag = Math.hypot(gray.cols, gray.rows)
+
+      for (let i = 0; i < contours.size(); i++) {
+        const cnt = contours.get(i)
+        const area = Math.abs(cv.contourArea(cnt))
+        const relArea = area / imgArea
+        if (relArea < 0.18 || relArea > 0.98) {
+          cnt.delete()
+          continue
+        }
+
+        const perimeter = cv.arcLength(cnt, true)
+        const points = this._aproximarQuadrilatero(cnt, perimeter)
+        cnt.delete()
+        if (!points) continue
+
+        const ord = this._ordenarPontos(points)
+        if (!ord) continue
+
+        const wTop = Math.hypot(ord.tr.x - ord.tl.x, ord.tr.y - ord.tl.y)
+        const wBottom = Math.hypot(ord.br.x - ord.bl.x, ord.br.y - ord.bl.y)
+        const hLeft = Math.hypot(ord.bl.x - ord.tl.x, ord.bl.y - ord.tl.y)
+        const hRight = Math.hypot(ord.br.x - ord.tr.x, ord.br.y - ord.tr.y)
+        const avgW = (wTop + wBottom) / 2
+        const avgH = (hLeft + hRight) / 2
+
+        if (avgW < gray.cols * 0.35 || avgH < gray.rows * 0.35) continue
+
+        const normalizedRatio = Math.max(avgW / Math.max(avgH, 1), avgH / Math.max(avgW, 1))
+        const ratioError = Math.abs(normalizedRatio - targetRatio)
+        if (ratioError > 0.65) continue
+
+        const cornerPenalty = (
+          Math.hypot(ord.tl.x, ord.tl.y) +
+          Math.hypot(gray.cols - ord.tr.x, ord.tr.y) +
+          Math.hypot(ord.bl.x, gray.rows - ord.bl.y) +
+          Math.hypot(gray.cols - ord.br.x, gray.rows - ord.br.y)
+        ) / (imgDiag * 4)
+
+        const symmetryPenalty = Math.abs(wTop - wBottom) / Math.max(avgW, 1)
+          + Math.abs(hLeft - hRight) / Math.max(avgH, 1)
+
+        const score = ratioError * 4 + symmetryPenalty * 2 + cornerPenalty - relArea * 1.5
+        if (score < bestScore) {
+          bestScore = score
+          best = ord
+        }
+      }
+    } finally {
+      blurred.delete()
+      bin.delete()
+      closed.delete()
+      contours.delete()
+      hierarchy.delete()
+      if (kernel) kernel.delete()
+    }
+
+    return best
+  }
+
   private _encontrarMarcadores(matBin: any): Marcadores | null {
     const contours = new cv.MatVector()
     const hierarchy = new cv.Mat()
@@ -592,7 +753,7 @@ export class OMREngine {
     if (candidatos.length < 4) return null
 
     const selected: Ponto[] | null = candidatos.length > 4
-      ? this._selecionar4Melhores(candidatos)
+      ? this._selecionar4Melhores(candidatos, matBin.cols, matBin.rows)
       : candidatos
 
     if (!selected) return null
@@ -600,12 +761,36 @@ export class OMREngine {
     return this._ordenarPontos(selected)
   }
 
-  private _selecionar4Melhores(cands: Ponto[]): Ponto[] | null {
+  private _aproximarQuadrilatero(cnt: any, perimeter: number): Ponto[] | null {
+    const epsilons = [0.03, 0.05, 0.08]
+
+    for (const factor of epsilons) {
+      const approx = new cv.Mat()
+      try {
+        cv.approxPolyDP(cnt, approx, perimeter * factor, true)
+        if (approx.rows !== 4) continue
+
+        const pontos: Ponto[] = []
+        for (let i = 0; i < 4; i++) {
+          const ponto = approx.intPtr(i, 0)
+          pontos.push({ x: ponto[0], y: ponto[1] })
+        }
+        return pontos
+      } finally {
+        approx.delete()
+      }
+    }
+
+    return null
+  }
+
+  private _selecionar4Melhores(cands: Ponto[], imgW: number, imgH: number): Ponto[] | null {
     const targetRatio = CARTAO.largura / CARTAO.altura
     let best: Ponto[] | null = null
     let bestScore = Infinity
+    const imgArea = imgW * imgH
+    const imgDiag = Math.hypot(imgW, imgH)
 
-    // Pegar os 12 maiores candidatos
     const n = Math.min(cands.length, 12)
     cands.sort((a, b) => (b.area || 0) - (a.area || 0))
     cands = cands.slice(0, n)
@@ -622,13 +807,18 @@ export class OMREngine {
             const w2 = Math.hypot(ord.br.x - ord.bl.x, ord.br.y - ord.bl.y)
             const h1 = Math.hypot(ord.bl.x - ord.tl.x, ord.bl.y - ord.tl.y)
             const h2 = Math.hypot(ord.br.x - ord.tr.x, ord.br.y - ord.tr.y)
-
             const avgW = (w1 + w2) / 2
             const avgH = (h1 + h2) / 2
             if (avgH === 0) continue
+            if (avgW < imgW * 0.3 || avgH < imgH * 0.3) continue
 
             const ratio = avgW / avgH
-            let score = Math.abs(ratio - targetRatio)
+            const normalizedRatio = Math.max(ratio, 1 / Math.max(ratio, 0.001))
+            const quadArea = this._calcularAreaQuadrilatero(ord)
+            const relQuadArea = quadArea / imgArea
+            if (relQuadArea < 0.12) continue
+
+            let score = Math.abs(normalizedRatio - targetRatio)
             score += Math.abs(w1 - w2) / Math.max(w1, w2)
             score += Math.abs(h1 - h2) / Math.max(h1, h2)
 
@@ -642,6 +832,15 @@ export class OMREngine {
             const minA = Math.min(...areas)
             if (maxA > 0) score += (1 - minA / maxA) * 2
 
+            const cornerPenalty = (
+              Math.hypot(ord.tl.x, ord.tl.y) +
+              Math.hypot(imgW - ord.tr.x, ord.tr.y) +
+              Math.hypot(ord.bl.x, imgH - ord.bl.y) +
+              Math.hypot(imgW - ord.br.x, imgH - ord.br.y)
+            ) / (imgDiag * 4)
+            score += cornerPenalty * 1.4
+            score -= relQuadArea * 0.75
+
             if (score < bestScore) {
               bestScore = score
               best = pts
@@ -652,6 +851,19 @@ export class OMREngine {
     }
 
     return best
+  }
+
+  private _calcularAreaQuadrilatero(ord: Marcadores): number {
+    const pontos = [ord.tl, ord.tr, ord.br, ord.bl]
+    let area = 0
+
+    for (let i = 0; i < pontos.length; i++) {
+      const atual = pontos[i]
+      const proximo = pontos[(i + 1) % pontos.length]
+      area += atual.x * proximo.y - proximo.x * atual.y
+    }
+
+    return Math.abs(area) / 2
   }
 
   private _ordenarPontos(pts: Ponto[]): Marcadores | null {
@@ -675,6 +887,81 @@ export class OMREngine {
   }
 
   // ── CORREÇÃO DE PERSPECTIVA ─────────────────────────────────
+
+  private _rotacionar90Cantos(cantos: Marcadores): Marcadores {
+    return { tl: cantos.bl, tr: cantos.tl, bl: cantos.br, br: cantos.tr }
+  }
+
+  private _rotacionar180Cantos(cantos: Marcadores): Marcadores {
+    return { tl: cantos.br, tr: cantos.bl, bl: cantos.tr, br: cantos.tl }
+  }
+
+  private _alinharOrientacao(
+    src: any,
+    cantos: Marcadores,
+    modo: 'markers' | 'page'
+  ): Marcadores {
+    let alinhados = cantos
+
+    const wTop = Math.hypot(
+      alinhados.tr.x - alinhados.tl.x,
+      alinhados.tr.y - alinhados.tl.y
+    )
+    const hLeft = Math.hypot(
+      alinhados.bl.x - alinhados.tl.x,
+      alinhados.bl.y - alinhados.tl.y
+    )
+
+    if (hLeft > wTop * 1.15) {
+      alinhados = this._rotacionar90Cantos(alinhados)
+    }
+
+    try {
+      const testWarped = modo === 'page'
+        ? this._corrigirPerspectivaPagina(src, alinhados)
+        : this._corrigirPerspectiva(src, alinhados)
+      const testGray = new cv.Mat()
+      const testBin = new cv.Mat()
+      cv.cvtColor(testWarped, testGray, cv.COLOR_RGBA2GRAY)
+      cv.threshold(testGray, testBin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+
+      const px = OMREngine.PX_MM
+      const qrRegion = { x: Math.round(10 * px), y: Math.round(20 * px), w: Math.round(26 * px), h: Math.round(26 * px) }
+      const rx = Math.max(0, qrRegion.x)
+      const ry = Math.max(0, qrRegion.y)
+      const rw = Math.min(qrRegion.w, testBin.cols - rx)
+      const rh = Math.min(qrRegion.h, testBin.rows - ry)
+
+      if (rw > 0 && rh > 0) {
+        const roiTL = testBin.roi(new cv.Rect(rx, ry, rw, rh))
+        const densidadeTL = cv.countNonZero(roiTL) / (rw * rh)
+        roiTL.delete()
+
+        const brx = Math.max(0, testBin.cols - rx - rw)
+        const bry = Math.max(0, testBin.rows - ry - rh)
+        const brw = Math.min(rw, testBin.cols - brx)
+        const brh = Math.min(rh, testBin.rows - bry)
+
+        if (brw > 0 && brh > 0) {
+          const roiBR = testBin.roi(new cv.Rect(brx, bry, brw, brh))
+          const densidadeBR = cv.countNonZero(roiBR) / (brw * brh)
+          roiBR.delete()
+
+          if (densidadeBR > densidadeTL * 1.5 && densidadeBR > 0.15) {
+            alinhados = this._rotacionar180Cantos(alinhados)
+          }
+        }
+      }
+
+      testBin.delete()
+      testGray.delete()
+      testWarped.delete()
+    } catch {
+      // Mantemos a orientação atual se a heurística falhar.
+    }
+
+    return alinhados
+  }
 
   private _corrigirPerspectiva(src: any, m: Marcadores): any {
     const C = CARTAO
@@ -704,6 +991,29 @@ export class OMREngine {
   }
 
   // ── LEITURA DE QR PROGRESSIVA ─────────────────────────────
+
+  private _corrigirPerspectivaPagina(src: any, pagina: Marcadores): any {
+    const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      pagina.tl.x, pagina.tl.y, pagina.tr.x, pagina.tr.y, pagina.bl.x, pagina.bl.y, pagina.br.x, pagina.br.y,
+    ])
+
+    const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      0, 0,
+      OMREngine.CARD_W - 1, 0,
+      0, OMREngine.CARD_H - 1,
+      OMREngine.CARD_W - 1, OMREngine.CARD_H - 1,
+    ])
+
+    const M = cv.getPerspectiveTransform(srcPts, dstPts)
+    const warped = new cv.Mat()
+    cv.warpPerspective(src, warped, M, new cv.Size(OMREngine.CARD_W, OMREngine.CARD_H))
+
+    srcPts.delete()
+    dstPts.delete()
+    M.delete()
+
+    return warped
+  }
 
   private _lerQRProgressivo(matWarped: any): ReturnType<typeof this._parseQRData> {
     const C = CARTAO
