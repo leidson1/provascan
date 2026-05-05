@@ -66,8 +66,8 @@ export class OMREngine {
   private static PX_MM = 4
   private static CARD_W = 840   // 210mm * 4
   private static CARD_H = 594   // 148.5mm * 4
-  private static MIN_FILL = 0.20
-  private static AMBIG_RATIO = 0.58
+  private static MIN_FILL = 0.16
+  private static AMBIG_RATIO = 0.82
 
   private _pronto = false
 
@@ -169,6 +169,8 @@ export class OMREngine {
       src = cv.imread(canvas)
       gray = new cv.Mat()
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+      const normalizedGray = this._normalizarIluminacao(gray)
+      allMats.push(normalizedGray)
 
       // ── Nível 1: Otsu simples (funciona 80% das vezes com foto boa) ──
       const blurred = new cv.Mat()
@@ -181,21 +183,24 @@ export class OMREngine {
 
       // ── Nível 2: Adaptive threshold (iluminação irregular) ──
       if (!marcadores) {
-        const bin2 = new cv.Mat()
+        const bin2Raw = new cv.Mat()
         cv.adaptiveThreshold(
-          gray, bin2, 255,
+          normalizedGray, bin2Raw, 255,
           cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 51, 10
         )
+        const bin2 = this._refinarMascaraBolhas(bin2Raw)
+        bin2Raw.delete()
         allMats.push(bin2)
         marcadores = this._encontrarMarcadores(bin2)
       }
 
       // ── Nível 3: Normalização de iluminação + Otsu (foto ruim) ──
       if (!marcadores) {
-        const norm = this._normalizarIluminacao(gray)
-        const bin3 = new cv.Mat()
-        cv.threshold(norm, bin3, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
-        allMats.push(norm, bin3)
+        const bin3Raw = new cv.Mat()
+        cv.threshold(normalizedGray, bin3Raw, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+        const bin3 = this._refinarMascaraBolhas(bin3Raw)
+        bin3Raw.delete()
+        allMats.push(bin3)
         marcadores = this._encontrarMarcadores(bin3)
       }
 
@@ -425,16 +430,103 @@ export class OMREngine {
     const result = new cv.Mat()
     normalized.convertTo(result, cv.CV_8U, 200, 0)
 
+    const stretched = new cv.Mat()
+    cv.normalize(result, stretched, 0, 255, cv.NORM_MINMAX)
+
+    const localContrast = this._aplicarClahe(stretched)
+    const gammaCorrected = this._ajustarGamma(localContrast, 0.92)
+    const softened = new cv.Mat()
+    cv.GaussianBlur(gammaCorrected, softened, new cv.Size(3, 3), 0)
+
     const finalResult = new cv.Mat()
-    cv.normalize(result, finalResult, 0, 255, cv.NORM_MINMAX)
+    cv.addWeighted(gammaCorrected, 1.15, softened, -0.15, 0, finalResult)
 
     bg.delete()
     floatGray.delete()
     floatBg.delete()
     normalized.delete()
     result.delete()
+    stretched.delete()
+    localContrast.delete()
+    gammaCorrected.delete()
+    softened.delete()
 
     return finalResult
+  }
+
+  private _aplicarClahe(gray: any): any {
+    if (typeof cv.createCLAHE !== 'function') {
+      return gray.clone()
+    }
+
+    const clahe = cv.createCLAHE(2.5, new cv.Size(8, 8))
+    const result = new cv.Mat()
+    try {
+      clahe.apply(gray, result)
+      return result
+    } finally {
+      clahe.delete()
+    }
+  }
+
+  private _ajustarGamma(gray: any, gamma: number): any {
+    const floatGray = new cv.Mat()
+    gray.convertTo(floatGray, cv.CV_32F, 1 / 255, 0)
+
+    const correctedFloat = new cv.Mat()
+    cv.pow(floatGray, gamma, correctedFloat)
+
+    const corrected = new cv.Mat()
+    correctedFloat.convertTo(corrected, cv.CV_8U, 255, 0)
+
+    floatGray.delete()
+    correctedFloat.delete()
+
+    return corrected
+  }
+
+  private _prepararCinzaBolhas(wGray: any): any {
+    const normalized = this._normalizarIluminacao(wGray)
+    const prepared = new cv.Mat()
+    cv.GaussianBlur(normalized, prepared, new cv.Size(3, 3), 0)
+    normalized.delete()
+    return prepared
+  }
+
+  private _criarMascaraBolhas(
+    gray: any,
+    adaptiveMethod: number,
+    blockSize: number,
+    c: number
+  ): any {
+    const bin = new cv.Mat()
+    cv.adaptiveThreshold(
+      gray,
+      bin,
+      255,
+      adaptiveMethod,
+      cv.THRESH_BINARY_INV,
+      blockSize,
+      c
+    )
+
+    const refined = this._refinarMascaraBolhas(bin)
+    bin.delete()
+    return refined
+  }
+
+  private _refinarMascaraBolhas(matBin: any): any {
+    const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3))
+    const opened = new cv.Mat()
+    const refined = new cv.Mat()
+
+    cv.morphologyEx(matBin, opened, cv.MORPH_OPEN, kernel)
+    cv.morphologyEx(opened, refined, cv.MORPH_CLOSE, kernel)
+
+    kernel.delete()
+    opened.delete()
+
+    return refined
   }
 
   // ── DETECÇÃO DE MARCADORES ────────────────────────────────
@@ -801,77 +893,67 @@ export class OMREngine {
     const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
     const raio = Math.round(CARTAO.bolhaRaio * px * 0.75)
 
-    // Leitura principal
-    const wBin1 = new cv.Mat()
-    cv.adaptiveThreshold(
-      wGray, wBin1, 255,
-      cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 8
-    )
-    const leitura1 = this._lerBolhasUmaVezMista(wBin1, posicoes, nq, raio)
-    wBin1.delete()
+    const preparedGray = this._prepararCinzaBolhas(wGray)
+    try {
+      const wBin1 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 15, 8)
+      const leitura1 = this._lerBolhasUmaVezMista(wBin1, posicoes, nq, raio)
+      wBin1.delete()
 
-    // Verificar se precisa fallback
-    let precisaFallback = false
-    for (let q = 0; q < nq; q++) {
-      let maxN = 0
-      for (let a = 0; a < leitura1[q].length; a++) {
-        if (leitura1[q][a] > maxN) maxN = leitura1[q][a]
+      let precisaFallback = false
+      for (let q = 0; q < nq; q++) {
+        let maxN = 0
+        for (let a = 0; a < leitura1[q].length; a++) {
+          if (leitura1[q][a] > maxN) maxN = leitura1[q][a]
+        }
+        if (maxN < Math.max(OMREngine.MIN_FILL * 1.2, 0.18)) {
+          precisaFallback = true
+          break
+        }
       }
-      if (maxN < OMREngine.MIN_FILL * 1.5) {
-        precisaFallback = true
-        break
+
+      if (!precisaFallback) {
+        return this._decidirRespostasMista(leitura1, nq, letrasPerQ)
       }
-    }
 
-    if (!precisaFallback) {
-      return this._decidirRespostasMista(leitura1, nq, letrasPerQ)
-    }
+      const wBin2 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_MEAN_C, 21, 6)
+      const leitura2 = this._lerBolhasUmaVezMista(wBin2, posicoes, nq, raio)
+      wBin2.delete()
 
-    // Fallback
-    const wBin2 = new cv.Mat()
-    cv.adaptiveThreshold(
-      wGray, wBin2, 255,
-      cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 21, 6
-    )
-    const leitura2 = this._lerBolhasUmaVezMista(wBin2, posicoes, nq, raio)
-    wBin2.delete()
-
-    const combinado: number[][] = []
-    for (let q = 0; q < nq; q++) {
-      const niveis: number[] = []
-      for (let a = 0; a < leitura1[q].length; a++) {
-        niveis.push((leitura1[q][a] + leitura2[q][a]) / 2)
-      }
-      combinado.push(niveis)
-    }
-
-    const resultado = this._decidirRespostasMista(combinado, nq, letrasPerQ)
-    let ambiguas = 0
-    for (let q = 0; q < resultado.length; q++) {
-      if (resultado[q].status === 'ambigua' || resultado[q].status === 'vazia') ambiguas++
-    }
-
-    if (ambiguas > nq * 0.3) {
-      const wBin3 = new cv.Mat()
-      cv.adaptiveThreshold(
-        wGray, wBin3, 255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 5
-      )
-      const leitura3 = this._lerBolhasUmaVezMista(wBin3, posicoes, nq, raio)
-      wBin3.delete()
-
-      const triplo: number[][] = []
+      const combinado: number[][] = []
       for (let q = 0; q < nq; q++) {
         const niveis: number[] = []
         for (let a = 0; a < leitura1[q].length; a++) {
-          niveis.push((leitura1[q][a] + leitura2[q][a] + leitura3[q][a]) / 3)
+          niveis.push((leitura1[q][a] + leitura2[q][a]) / 2)
         }
-        triplo.push(niveis)
+        combinado.push(niveis)
       }
-      return this._decidirRespostasMista(triplo, nq, letrasPerQ)
-    }
 
-    return resultado
+      const resultado = this._decidirRespostasMista(combinado, nq, letrasPerQ)
+      let ambiguas = 0
+      for (let q = 0; q < resultado.length; q++) {
+        if (resultado[q].status === 'ambigua' || resultado[q].status === 'vazia') ambiguas++
+      }
+
+      if (ambiguas > nq * 0.3) {
+        const wBin3 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 31, 5)
+        const leitura3 = this._lerBolhasUmaVezMista(wBin3, posicoes, nq, raio)
+        wBin3.delete()
+
+        const triplo: number[][] = []
+        for (let q = 0; q < nq; q++) {
+          const niveis: number[] = []
+          for (let a = 0; a < leitura1[q].length; a++) {
+            niveis.push((leitura1[q][a] + leitura2[q][a] + leitura3[q][a]) / 3)
+          }
+          triplo.push(niveis)
+        }
+        return this._decidirRespostasMista(triplo, nq, letrasPerQ)
+      }
+
+      return resultado
+    } finally {
+      preparedGray.delete()
+    }
   }
 
   private _lerBolhasUmaVezMista(
@@ -902,63 +984,70 @@ export class OMREngine {
     const respostas: OMRResposta[] = []
 
     for (let q = 0; q < nq; q++) {
-      const qLetras = letrasPerQ[q]
-      const qNalts = qLetras.length
-
-      const sorted: { idx: number; val: number }[] = []
-      for (let a = 0; a < qNalts; a++) {
-        sorted.push({ idx: a, val: niveis[q][a] })
-      }
-      sorted.sort((a, b) => b.val - a.val)
-
-      const maxNivel = sorted[0].val
-      const maxIdx = sorted[0].idx
-      const secondMax = sorted.length > 1 ? sorted[1].val : 0
-
-      const outros: number[] = []
-      for (let a = 1; a < sorted.length; a++) outros.push(sorted[a].val)
-      outros.sort((a, b) => a - b)
-      const mediana = outros.length > 0 ? outros[Math.floor(outros.length / 2)] : 0
-
-      const resp: OMRResposta = {
-        questao: q + 1,
-        niveis: niveis[q],
-        marcada: null,
-        confianca: 0,
-        status: 'vazia',
-      }
-
-      const destaque = mediana > 0 ? maxNivel / mediana : (maxNivel > 0.05 ? 10 : 0)
-
-      const threshAlto = mediana > 0 ? mediana * 1.8 : 0.10
-      let bolhasAltas = 0
-      for (let a = 0; a < qNalts; a++) {
-        if (niveis[q][a] >= threshAlto && niveis[q][a] >= 0.10) {
-          bolhasAltas++
-        }
-      }
-
-      if (destaque < 1.3) {
-        resp.marcada = null
-        resp.confianca = 0
-        resp.status = 'vazia'
-      } else if (bolhasAltas >= 2 && secondMax > maxNivel * 0.55) {
-        resp.marcada = 'DUPLA'
-        resp.confianca = 0
-        resp.status = 'ambigua'
-      } else {
-        resp.marcada = qLetras[maxIdx]
-        resp.confianca = maxNivel
-        resp.status = 'ok'
-      }
-
-      respostas.push(resp)
+      respostas.push(this._resolverResposta(q + 1, niveis[q], letrasPerQ[q]))
     }
 
     return respostas
   }
 
   // ── DEBUG (MISTA) ──────────────────────────────────────────
+
+  private _resolverResposta(questao: number, niveisQuestao: number[], letras: string[]): OMRResposta {
+    const sorted = niveisQuestao
+      .map((val, idx) => ({ idx, val }))
+      .sort((a, b) => b.val - a.val)
+
+    const maxNivel = sorted[0]?.val ?? 0
+    const maxIdx = sorted[0]?.idx ?? 0
+    const secondMax = sorted[1]?.val ?? 0
+    const outros = sorted
+      .slice(1)
+      .map((entry) => entry.val)
+      .sort((a, b) => a - b)
+    const mediana = outros.length > 0 ? outros[Math.floor(outros.length / 2)] : 0
+    const q3 = outros.length > 0 ? outros[Math.floor(outros.length * 0.75)] : mediana
+    const baseline = Math.max(mediana, q3 * 0.85, 0.02)
+    const contrasteAbs = maxNivel - baseline
+    const contrasteRel = baseline > 0 ? maxNivel / baseline : maxNivel / 0.02
+
+    const nearPeak = niveisQuestao.filter((valor) => valor >= Math.max(0.12, maxNivel - 0.06)).length
+    const secondaryStrong = secondMax >= Math.max(
+      maxNivel * OMREngine.AMBIG_RATIO,
+      baseline + 0.05,
+      0.12
+    )
+    const hasStrongMark = maxNivel >= Math.max(
+      OMREngine.MIN_FILL * 0.75,
+      baseline + 0.05,
+      0.12
+    )
+
+    const resposta: OMRResposta = {
+      questao,
+      niveis: niveisQuestao,
+      marcada: null,
+      confianca: 0,
+      status: 'vazia',
+    }
+
+    if (!hasStrongMark || contrasteAbs < 0.045 || contrasteRel < 1.35) {
+      return resposta
+    }
+
+    if (nearPeak >= 2 || secondaryStrong) {
+      resposta.marcada = 'DUPLA'
+      resposta.status = 'ambigua'
+      return resposta
+    }
+
+    resposta.marcada = letras[maxIdx] ?? null
+    resposta.confianca = Math.max(
+      0,
+      Math.min(1, maxNivel * 0.55 + Math.max(0, contrasteAbs) * 2.8 + Math.max(0, contrasteRel - 1) * 0.18)
+    )
+    resposta.status = 'ok'
+    return resposta
+  }
 
   private _gerarDebugMista(
     warped: any,
@@ -1301,9 +1390,48 @@ export class OMREngine {
     let roi: any = null
     try {
       roi = matBin.roi(new cv.Rect(x, y, w, h))
-      const total = roi.rows * roi.cols
-      const preenchido = cv.countNonZero(roi)
-      return total > 0 ? preenchido / total : 0
+      const centerX = cx - x
+      const centerY = cy - y
+      const innerRadius = Math.max(2, r * 0.55)
+      const ringInnerRadius = Math.max(innerRadius + 1, r * 0.72)
+      const ringOuterRadius = Math.max(ringInnerRadius + 1, r * 0.98)
+
+      let centerCount = 0
+      let centerFilled = 0
+      let ringCount = 0
+      let ringFilled = 0
+      let totalCount = 0
+      let totalFilled = 0
+
+      for (let yy = 0; yy < roi.rows; yy++) {
+        for (let xx = 0; xx < roi.cols; xx++) {
+          const dx = xx + 0.5 - centerX
+          const dy = yy + 0.5 - centerY
+          const distance = Math.hypot(dx, dy)
+          const filled = roi.ucharPtr(yy, xx)[0] > 0 ? 1 : 0
+
+          totalCount++
+          totalFilled += filled
+
+          if (distance <= innerRadius) {
+            centerCount++
+            centerFilled += filled
+          } else if (distance >= ringInnerRadius && distance <= ringOuterRadius) {
+            ringCount++
+            ringFilled += filled
+          }
+        }
+      }
+
+      const centerDensity = centerCount > 0 ? centerFilled / centerCount : 0
+      const ringDensity = ringCount > 0 ? ringFilled / ringCount : 0
+      const totalDensity = totalCount > 0 ? totalFilled / totalCount : 0
+      const emphasis = Math.max(0, centerDensity - ringDensity)
+
+      return Math.max(
+        0,
+        Math.min(1, centerDensity * 0.85 + emphasis * 0.65 + Math.max(0, totalDensity - ringDensity * 0.5) * 0.2)
+      )
     } finally {
       if (roi) roi.delete()
     }

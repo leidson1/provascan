@@ -6,9 +6,16 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { LiveScanner } from '@/components/camera/live-scanner'
 import type { Prova, Aluno, Resultado } from '@/types/database'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
 import type { OMRResult as EngineOMRResult, OMREngine } from '@/lib/omr/engine'
+import {
+  analyzeCaptureQuality,
+  CAPTURE_MAX_LONG_SIDE,
+  CAPTURE_MIN_SHORT_SIDE,
+  type ResizeOptions,
+} from '@/lib/omr/capture-quality'
 
 // ── Types ──────────────────────────────────────────────────────
 interface SessionEntry {
@@ -54,10 +61,11 @@ function computeScore(
   const criterio = criterioDiscursiva || 3
 
   let acertos = 0
-  const total = gabarito.length
-  for (let i = 0; i < total; i++) {
+  let totalPossivel = 0
+  for (let i = 0; i < gabarito.length; i++) {
     const gab = gabarito[i]
     if (!gab || gab === 'X' || gab === '*') continue // anulada
+    totalPossivel++
     const isDisc = tipos[i]?.trim() === 'D'
     if (isDisc) {
       // Discursiva: pontuar pelo critério marcado
@@ -69,10 +77,13 @@ function computeScore(
       if (respostas[i] && respostas[i].toUpperCase() === gab) acertos++
     }
   }
-  return { acertos, percentual: total > 0 ? Math.round((acertos / total) * 100) : 0 }
+  return {
+    acertos,
+    percentual: totalPossivel > 0 ? Math.round((acertos / totalPossivel) * 100) : 0,
+  }
 }
 
-async function resizeImage(file: File, maxSize: number): Promise<HTMLCanvasElement> {
+async function resizeImage(file: File, options: ResizeOptions): Promise<HTMLCanvasElement> {
   // Ler orientação EXIF manualmente para rotacionar se necessário
   const orientation = await getExifOrientation(file)
 
@@ -87,13 +98,19 @@ async function resizeImage(file: File, maxSize: number): Promise<HTMLCanvasEleme
       // Redimensionar
       const srcW = needsSwap ? height : width
       const srcH = needsSwap ? width : height
-      let dstW = srcW
-      let dstH = srcH
-      if (dstW > maxSize || dstH > maxSize) {
-        const ratio = Math.min(maxSize / dstW, maxSize / dstH)
-        dstW = Math.round(dstW * ratio)
-        dstH = Math.round(dstH * ratio)
+      const longSide = Math.max(srcW, srcH)
+      const shortSide = Math.min(srcW, srcH)
+
+      let scale = 1
+      if (shortSide > 0 && shortSide < options.minShortSide) {
+        scale = options.minShortSide / shortSide
       }
+      if (longSide > 0 && longSide * scale > options.maxLongSide) {
+        scale = options.maxLongSide / longSide
+      }
+
+      const dstW = Math.max(1, Math.round(srcW * scale))
+      const dstH = Math.max(1, Math.round(srcH * scale))
 
       const canvas = document.createElement('canvas')
       canvas.width = dstW
@@ -442,16 +459,20 @@ function CameraPage() {
 
   // ── File capture ──
   function resetCaptureFeedback() {
-    resetCaptureFeedback()
+    setCaptureError('')
     setCaptureNotice(null)
     setCaptureWarnings([])
     setCaptureDebug(null)
   }
 
-  function showCaptureFailure(message: string, debug?: EngineOMRResult['debug'] | null) {
+  function showCaptureFailure(
+    message: string,
+    debug?: EngineOMRResult['debug'] | null,
+    warnings: string[] = []
+  ) {
     setCaptureError(message)
     setCaptureNotice(null)
-    setCaptureWarnings([])
+    setCaptureWarnings(warnings)
     setCaptureDebug(debug ?? null)
   }
 
@@ -474,16 +495,13 @@ function CameraPage() {
     setScreen('result')
   }
 
-  async function handleFileCapture(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  async function handleLiveCapture(canvas: HTMLCanvasElement) {
     resetCaptureFeedback()
     setProcessing(true)
-    setProcessingMsg('Redimensionando imagem...')
+    setProcessingMsg('Processando camera ao vivo...')
 
     try {
-      const canvas = await resizeImage(file, 2400)
+      const qualityWarnings = analyzeCaptureQuality(canvas).warnings
 
       if (omrReady && omrEngineRef.current) {
         setProcessingMsg('Processando OMR...')
@@ -500,7 +518,136 @@ function CameraPage() {
         ) as EngineOMRResult
 
         if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
-          const warnings = getOMRWarnings(result.respostas)
+          const omrWarnings = getOMRWarnings(result.respostas)
+          const warnings = [...qualityWarnings, ...omrWarnings]
+          const respostasLetras = result.respostas.map((r: { marcada: string | null }) =>
+            r.marcada ? r.marcada.toUpperCase() : ''
+          )
+
+          if (!hasUsableOMRRead(result.respostas)) {
+            showCaptureFailure(
+              'O cartï¿½o foi detectado, mas as marcaï¿½ï¿½es nï¿½o ficaram legï¿½veis o bastante para corrigir com seguranï¿½a.',
+              result.debug ?? null,
+              qualityWarnings
+            )
+            return
+          }
+
+          if (prova && result.qr?.provaId && result.qr.provaId !== prova.id) {
+            showCaptureFailure(
+              `Este cartï¿½o pertence ï¿½ prova ${result.qr.provaId}. Confira se a prova selecionada estï¿½ correta.`,
+              result.debug ?? null,
+              qualityWarnings
+            )
+            return
+          }
+
+          if (!result.qr) {
+            openResultReview(respostasLetras, null, {
+              notice: {
+                tone: 'warning',
+                title: 'QR nï¿½o lido',
+                message: 'As respostas foram lidas, mas o QR do aluno nï¿½o foi identificado. Selecione o aluno abaixo e confira as questï¿½es destacadas.',
+              },
+              warnings,
+              debug: result.debug ?? null,
+            })
+            return
+          }
+
+          if (result.qr.reserva) {
+            openResultReview(respostasLetras, null, {
+              notice: {
+                tone: 'info',
+                title: 'Cartï¿½o reserva',
+                message: 'O cartï¿½o lido ï¿½ de reserva. Selecione o aluno que usou este cartï¿½o e confirme a correï¿½ï¿½o.',
+              },
+              warnings,
+              debug: result.debug ?? null,
+            })
+            return
+          }
+
+          const alunoId = result.qr.alunoId ?? null
+          const alunoDaTurma = alunoId ? alunos.find((aluno) => aluno.id === alunoId) : null
+          if (alunoId && !alunoDaTurma) {
+            openResultReview(respostasLetras, null, {
+              notice: {
+                tone: 'warning',
+                title: 'Aluno nï¿½o localizado',
+                message: 'O QR foi lido, mas o aluno nï¿½o pertence ï¿½ turma carregada. Confira se o cartï¿½o ï¿½ da turma correta.',
+              },
+              warnings,
+              debug: result.debug ?? null,
+            })
+            return
+          }
+
+          openResultReview(respostasLetras, alunoDaTurma?.id ?? alunoId, {
+            notice: warnings.length > 0 ? {
+              tone: 'warning',
+              title: 'Leitura com alerta',
+              message: omrWarnings.length > 0
+                ? 'Algumas questï¿½es ficaram vazias ou com dupla marcaï¿½ï¿½o. Confira antes de confirmar.'
+                : 'A leitura funcionou, mas a captura apresentou sinais de baixa qualidade.',
+            } : null,
+            warnings,
+            debug: result.debug ?? null,
+          })
+        } else {
+          showCaptureFailure(
+            result?.mensagem || 'Nï¿½o foi possï¿½vel ler o cartï¿½o. Tente novamente com a foto mais nï¿½tida.',
+            result?.debug ?? null,
+            qualityWarnings
+          )
+        }
+      } else {
+        offerManualEntry({
+          tone: 'warning',
+          title: 'Leitura automï¿½tica indisponï¿½vel',
+          message: 'O motor de leitura nï¿½o carregou neste aparelho. Vocï¿½ ainda pode lanï¿½ar a correï¿½ï¿½o manualmente.',
+        })
+      }
+    } catch (err: unknown) {
+      showCaptureFailure(err instanceof Error ? err.message : 'Erro ao processar imagem')
+    } finally {
+      setProcessing(false)
+      setProcessingMsg('')
+    }
+  }
+
+  async function handleFileCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    resetCaptureFeedback()
+    setProcessing(true)
+    setProcessingMsg('Redimensionando imagem...')
+
+    try {
+      const canvas = await resizeImage(file, {
+        maxLongSide: CAPTURE_MAX_LONG_SIDE,
+        minShortSide: CAPTURE_MIN_SHORT_SIDE,
+      })
+      const qualityWarnings = analyzeCaptureQuality(canvas).warnings
+
+      if (omrReady && omrEngineRef.current) {
+        setProcessingMsg('Processando OMR...')
+        const engine = omrEngineRef.current
+        const nq = prova?.num_questoes || gabarito.length
+        const nalts = prova?.num_alternativas || 5
+        const result = engine.process(
+          canvas,
+          nq,
+          nalts,
+          prova?.tipos_questoes || undefined,
+          prova?.criterio_discursiva || undefined,
+          prova?.id || undefined
+        ) as EngineOMRResult
+
+        if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
+          const omrWarnings = getOMRWarnings(result.respostas)
+          const warnings = [...qualityWarnings, ...omrWarnings]
           const respostasLetras = result.respostas.map((r: { marcada: string | null }) =>
             r.marcada ? r.marcada.toUpperCase() : ''
           )
@@ -508,7 +655,8 @@ function CameraPage() {
           if (!hasUsableOMRRead(result.respostas)) {
             showCaptureFailure(
               'O cart�o foi detectado, mas as marca��es n�o ficaram leg�veis o bastante para corrigir com seguran�a.',
-              result.debug ?? null
+              result.debug ?? null,
+              qualityWarnings
             )
             return
           }
@@ -574,7 +722,8 @@ function CameraPage() {
         } else {
           showCaptureFailure(
             result?.mensagem || 'N�o foi poss�vel ler o cart�o. Tente novamente com a foto mais n�tida.',
-            result?.debug ?? null
+            result?.debug ?? null,
+            qualityWarnings
           )
         }
       } else {
@@ -638,6 +787,7 @@ function CameraPage() {
     if (!prova || !userId) return
 
     const { acertos, percentual } = currentScore
+    const totalQuestoesValidas = gabarito.filter((item) => item && item !== 'X' && item !== '*').length
     const respostasObj: Record<string, number | string> = {}
     const tipos = prova.tipos_questoes ? prova.tipos_questoes.split(',') : []
     const criterioMap: Record<number, Record<string, number>> = {
@@ -662,8 +812,8 @@ function CameraPage() {
 
     // Calculate nota if modo_avaliacao === 'nota'
     let nota: number | null = null
-    if (prova.modo_avaliacao === 'nota' && prova.nota_total) {
-      nota = Math.round((acertos / gabarito.length) * prova.nota_total * 100) / 100
+    if (prova.modo_avaliacao === 'nota' && prova.nota_total && totalQuestoesValidas > 0) {
+      nota = Math.round((acertos / totalQuestoesValidas) * prova.nota_total * 100) / 100
     }
 
     const existing = existingResults.get(currentAlunoId)
@@ -715,7 +865,7 @@ function CameraPage() {
     })
 
     toast.success(
-      `${currentAluno?.nome || 'Aluno'}: ${acertos}/${gabarito.length} (${percentual}%)`
+      `${currentAluno?.nome || 'Aluno'}: ${acertos}/${totalQuestoesValidas || gabarito.length} (${percentual}%)`
     )
 
     // Reset for next capture
@@ -966,8 +1116,22 @@ function CameraPage() {
                 Enquadre todo o cartão com boa iluminação.
               </p>
 
+              <LiveScanner
+                disabled={processing || omrLoading}
+                onCapture={handleLiveCapture}
+              />
+
+              <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-left">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Plano B
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  Abra a camera ou galeria do aparelho se o scanner ao vivo nao estiver bom neste celular.
+                </p>
+              </div>
+
               {/* File input trigger */}
-              <label className="block w-full cursor-pointer">
+              <label className="mt-3 block w-full cursor-pointer">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -988,7 +1152,7 @@ function CameraPage() {
                     </>
                   ) : (
                     <>
-                      <span>&#128248;</span> Fotografar Cartão
+                      <span>&#128248;</span> Usar Foto do Aparelho
                     </>
                   )}
                 </div>
@@ -1006,6 +1170,16 @@ function CameraPage() {
               {captureError && (
                 <div className="mt-3 p-3 bg-red-900/50 text-red-300 rounded-lg text-sm text-left">
                   {captureError}
+                </div>
+              )}
+
+              {captureWarnings.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-3 text-left text-xs text-amber-100">
+                  <div className="font-semibold text-sm">Dicas para a proxima foto</div>
+                  <div className="mt-1">
+                    {captureWarnings.slice(0, 4).join(' • ')}
+                    {captureWarnings.length > 4 ? ` • +${captureWarnings.length - 4} outras` : ''}
+                  </div>
                 </div>
               )}
 
