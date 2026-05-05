@@ -16,6 +16,23 @@ export interface OMRResult {
   respostas?: OMRResposta[]
   confianca?: number[]
   debug?: { imageUrl: string; levels: DebugLevel[] }
+  telemetry?: OMRTelemetry
+}
+
+export interface OMRTelemetry {
+  deviceTier: 'low' | 'balanced' | 'high'
+  totalMs: number
+  preprocessMs: number
+  pageDetectMs: number
+  markerDetectMs: number
+  analysisMs: number
+  qrMs: number
+  bubbleMs: number
+  debugMs: number
+  candidateCount: number
+  orientationChecks: number
+  fastPathUsed: boolean
+  selectedSource: 'page' | 'markers' | 'unknown'
 }
 
 export interface OMRResposta {
@@ -34,6 +51,40 @@ interface DebugLevel {
 }
 
 type ParsedQRData = { provaId: number; alunoId: number | null; reserva?: string; raw: string } | null
+type DeviceTier = 'low' | 'balanced' | 'high'
+
+export interface OMRProcessOptions {
+  deviceTier?: DeviceTier
+}
+
+interface WarpAnalysisTelemetry {
+  analysisMs: number
+  qrMs: number
+  bubbleMs: number
+  debugMs: number
+}
+
+interface OrientationAnalysisTelemetry extends WarpAnalysisTelemetry {
+  orientationChecks: number
+  fastPathUsed: boolean
+  selectedSource: 'page' | 'markers' | 'unknown'
+}
+
+interface WarpedAnalysisResult {
+  qr: ParsedQRData
+  respostas: OMRResposta[]
+  debug?: { imageUrl: string; levels: DebugLevel[] }
+  score: number
+  telemetry: WarpAnalysisTelemetry
+}
+
+interface OrientationAnalysisResult {
+  qr: ParsedQRData
+  respostas: OMRResposta[]
+  debug?: { imageUrl: string; levels: DebugLevel[] }
+  score: number
+  telemetry: OrientationAnalysisTelemetry
+}
 
 interface Marcadores {
   tl: Ponto
@@ -126,6 +177,12 @@ export class OMREngine {
     return this._pronto
   }
 
+  private _now(): number {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now()
+  }
+
   /**
    * Processa um canvas contendo a foto de um cartão-resposta.
    * Retorna resultado OMR com QR, respostas e debug.
@@ -136,8 +193,11 @@ export class OMREngine {
     nalts: number,
     tiposQuestoes?: string,
     criterioDiscursiva?: number,
-    expectedProvaId?: number
+    expectedProvaId?: number,
+    options: OMRProcessOptions = {}
   ): OMRResult {
+    const startedAt = this._now()
+    const deviceTier = options.deviceTier || 'balanced'
     nq = nq || 10
     nalts = nalts || 5
     const letrasObj = ['A', 'B', 'C', 'D', 'E'].slice(0, nalts)
@@ -163,8 +223,24 @@ export class OMREngine {
     let src: any = null
     let gray: any = null
     const allMats: any[] = []
+    const telemetry: OMRTelemetry = {
+      deviceTier,
+      totalMs: 0,
+      preprocessMs: 0,
+      pageDetectMs: 0,
+      markerDetectMs: 0,
+      analysisMs: 0,
+      qrMs: 0,
+      bubbleMs: 0,
+      debugMs: 0,
+      candidateCount: 0,
+      orientationChecks: 0,
+      fastPathUsed: false,
+      selectedSource: 'unknown',
+    }
 
     try {
+      const preprocessStartedAt = this._now()
       src = cv.imread(canvas)
       gray = new cv.Mat()
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
@@ -177,17 +253,21 @@ export class OMREngine {
       const bin1 = new cv.Mat()
       cv.threshold(blurred, bin1, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
       allMats.push(blurred, bin1)
+      telemetry.preprocessMs = this._now() - preprocessStartedAt
 
-      const candidatosWarp: any[] = []
+      const candidatosWarp: Array<{ mat: any; source: 'page' | 'markers' }> = []
 
+      const pageDetectStartedAt = this._now()
       const pagina = this._encontrarContornoPagina(normalizedGray) || this._encontrarContornoPagina(gray)
+      telemetry.pageDetectMs = this._now() - pageDetectStartedAt
       if (pagina) {
         const paginaOrientada = this._alinharOrientacao(src, pagina, 'page')
         const warpedPagina = this._corrigirPerspectivaPagina(src, paginaOrientada)
-        candidatosWarp.push(warpedPagina)
+        candidatosWarp.push({ mat: warpedPagina, source: 'page' })
         allMats.push(warpedPagina)
       }
 
+      const markerDetectStartedAt = this._now()
       let marcadores = this._encontrarMarcadores(bin1)
 
       // ── Nível 2: Adaptive threshold (iluminação irregular) ──
@@ -212,8 +292,10 @@ export class OMREngine {
         allMats.push(bin3)
         marcadores = this._encontrarMarcadores(bin3)
       }
+      telemetry.markerDetectMs = this._now() - markerDetectStartedAt
 
       if (!marcadores && candidatosWarp.length === 0) {
+        telemetry.totalMs = this._now() - startedAt
         return {
           sucesso: false,
           mensagem: 'Não foi possível localizar a folha. Enquadre todo o cartão com boa iluminação e contraste.',
@@ -225,21 +307,16 @@ export class OMREngine {
       if (marcadores) {
         const marcadoresOrientados = this._alinharOrientacao(src, marcadores, 'markers')
         const warpedMarcadores = this._corrigirPerspectiva(src, marcadoresOrientados)
-        candidatosWarp.push(warpedMarcadores)
+        candidatosWarp.push({ mat: warpedMarcadores, source: 'markers' })
         allMats.push(warpedMarcadores)
       }
+      telemetry.candidateCount = candidatosWarp.length
 
-      let analise:
-        | {
-            qr: ParsedQRData
-            respostas: OMRResposta[]
-            debug?: { imageUrl: string; levels: DebugLevel[] }
-            score: number
-          }
-        | null = null
-      for (const candidatoWarp of candidatosWarp) {
+      let analise: OrientationAnalysisResult | null = null
+      for (let idx = 0; idx < candidatosWarp.length; idx++) {
+        const candidatoWarp = candidatosWarp[idx]
         const tentativa = this._analisarMelhorOrientacao(
-          candidatoWarp,
+          candidatoWarp.mat,
           nq,
           nalts,
           letrasPerQ,
@@ -248,16 +325,46 @@ export class OMREngine {
           expectedProvaId
         )
         if (!analise || tentativa.score > analise.score) {
-          analise = tentativa
+          analise = {
+            ...tentativa,
+            telemetry: {
+              ...tentativa.telemetry,
+              selectedSource: candidatoWarp.source,
+            },
+          }
+        }
+
+        if (deviceTier === 'low' && this._atingiuScoreConfiavel(tentativa, nq, expectedProvaId)) {
+          analise = {
+            ...tentativa,
+            telemetry: {
+              ...tentativa.telemetry,
+              selectedSource: candidatoWarp.source,
+              fastPathUsed:
+                tentativa.telemetry.fastPathUsed || idx < candidatosWarp.length - 1,
+            },
+          }
+          break
         }
       }
 
       if (!analise) {
+        telemetry.totalMs = this._now() - startedAt
         return {
           sucesso: false,
           mensagem: 'Falha ao analisar a folha capturada.',
+          telemetry,
         }
       }
+
+      telemetry.analysisMs = analise.telemetry.analysisMs
+      telemetry.qrMs = analise.telemetry.qrMs
+      telemetry.bubbleMs = analise.telemetry.bubbleMs
+      telemetry.debugMs = analise.telemetry.debugMs
+      telemetry.orientationChecks = analise.telemetry.orientationChecks
+      telemetry.fastPathUsed = analise.telemetry.fastPathUsed
+      telemetry.selectedSource = analise.telemetry.selectedSource
+      telemetry.totalMs = this._now() - startedAt
 
       return {
         sucesso: true,
@@ -265,11 +372,14 @@ export class OMREngine {
         respostas: analise.respostas,
         confianca: analise.respostas.map((r) => r.confianca),
         debug: analise.debug,
+        telemetry,
       }
     } catch (e: unknown) {
+      telemetry.totalMs = this._now() - startedAt
       return {
         sucesso: false,
         mensagem: 'Erro no processamento: ' + (e instanceof Error ? e.message : String(e)),
+        telemetry,
       }
     } finally {
       if (src) src.delete()
@@ -291,25 +401,29 @@ export class OMREngine {
     criterioDiscursiva?: number,
     expectedProvaId?: number,
     includeDebug = true
-  ): {
-    qr: ParsedQRData
-    respostas: OMRResposta[]
-    debug?: { imageUrl: string; levels: DebugLevel[] }
-    score: number
-  } {
+  ): WarpedAnalysisResult {
+    const analysisStartedAt = this._now()
+    const qrStartedAt = this._now()
     const qr = this._lerQRProgressivo(warped)
+    const qrMs = this._now() - qrStartedAt
     const wGray = new cv.Mat()
 
     try {
+      const bubbleStartedAt = this._now()
       cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
       const respostas = this._lerBolhasMista(wGray, nq, nalts, letrasPerQ, tiposQuestoes, criterioDiscursiva)
+      const bubbleMs = this._now() - bubbleStartedAt
 
       let debug: { imageUrl: string; levels: DebugLevel[] } | undefined
+      let debugMs = 0
       if (includeDebug) {
+        const debugStartedAt = this._now()
         try {
           debug = this._gerarDebugMista(warped, wGray, nq, nalts, respostas, tiposQuestoes, criterioDiscursiva)
         } catch {
           // debug falhou, ignora
+        } finally {
+          debugMs = this._now() - debugStartedAt
         }
       }
 
@@ -318,6 +432,12 @@ export class OMREngine {
         respostas,
         debug,
         score: this._pontuarAnalise(qr, respostas, expectedProvaId),
+        telemetry: {
+          analysisMs: this._now() - analysisStartedAt,
+          qrMs,
+          bubbleMs,
+          debugMs,
+        },
       }
     } finally {
       wGray.delete()
@@ -332,12 +452,7 @@ export class OMREngine {
     tiposQuestoes?: string,
     criterioDiscursiva?: number,
     expectedProvaId?: number
-  ): {
-    qr: ParsedQRData
-    respostas: OMRResposta[]
-    debug?: { imageUrl: string; levels: DebugLevel[] }
-    score: number
-  } {
+  ): OrientationAnalysisResult {
     const orientacoes = [
       { mat: warped, owns: false },
       { mat: this._rotacionar90Horario(warped), owns: true },
@@ -345,14 +460,17 @@ export class OMREngine {
       { mat: this._rotacionar90AntiHorario(warped), owns: true },
     ]
 
-    let melhor:
-      | {
-          qr: ParsedQRData
-          respostas: OMRResposta[]
-          debug?: { imageUrl: string; levels: DebugLevel[] }
-          score: number
-        }
-      | null = null
+    const telemetry: OrientationAnalysisTelemetry = {
+      analysisMs: 0,
+      qrMs: 0,
+      bubbleMs: 0,
+      debugMs: 0,
+      orientationChecks: 0,
+      fastPathUsed: false,
+      selectedSource: 'unknown',
+    }
+    let melhor: WarpedAnalysisResult | null = null
+    let melhorFinal: OrientationAnalysisResult | null = null
     let melhorOrientacao = 0
 
     try {
@@ -368,6 +486,11 @@ export class OMREngine {
           expectedProvaId,
           false
         )
+        telemetry.analysisMs += analise.telemetry.analysisMs
+        telemetry.qrMs += analise.telemetry.qrMs
+        telemetry.bubbleMs += analise.telemetry.bubbleMs
+        telemetry.debugMs += analise.telemetry.debugMs
+        telemetry.orientationChecks += 1
         if (!melhor || analise.score > melhor.score) {
           melhor = analise
           melhorOrientacao = idx
@@ -376,11 +499,12 @@ export class OMREngine {
         if (this._atingiuScoreConfiavel(analise, nq, expectedProvaId)) {
           melhor = analise
           melhorOrientacao = idx
+          telemetry.fastPathUsed = idx < orientacoes.length - 1
           break
         }
       }
 
-      melhor = this._analisarWarped(
+      const melhorComDebug = this._analisarWarped(
         orientacoes[melhorOrientacao].mat,
         nq,
         nalts,
@@ -390,6 +514,14 @@ export class OMREngine {
         expectedProvaId,
         true
       )
+      telemetry.analysisMs += melhorComDebug.telemetry.analysisMs
+      telemetry.qrMs += melhorComDebug.telemetry.qrMs
+      telemetry.bubbleMs += melhorComDebug.telemetry.bubbleMs
+      telemetry.debugMs += melhorComDebug.telemetry.debugMs
+      melhorFinal = {
+        ...melhorComDebug,
+        telemetry,
+      }
     } finally {
       for (const orientacao of orientacoes) {
         if (orientacao.owns) {
@@ -398,7 +530,7 @@ export class OMREngine {
       }
     }
 
-    return melhor!
+    return melhorFinal!
   }
 
   private _atingiuScoreConfiavel(

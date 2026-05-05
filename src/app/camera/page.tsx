@@ -14,6 +14,7 @@ import {
   analyzeCaptureQuality,
   CAPTURE_MAX_LONG_SIDE,
   CAPTURE_MIN_SHORT_SIDE,
+  type CaptureQualityReport,
   type ResizeOptions,
 } from '@/lib/omr/capture-quality'
 
@@ -37,12 +38,55 @@ type CaptureNotice = {
   title: string
   message: string
 }
+type DeviceTier = 'low' | 'balanced' | 'high'
 
 // ── Helpers ────────────────────────────────────────────────────
 const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 // O scanner ao vivo continua pronto no projeto, mas fica desligado
 // ate estabilizarmos completamente a captura por foto nativa.
 const ENABLE_LIVE_SCANNER = false
+
+function detectDeviceTier(): DeviceTier {
+  if (typeof navigator === 'undefined') return 'balanced'
+
+  const hardwareConcurrency = navigator.hardwareConcurrency || 4
+  const navWithMemory = navigator as Navigator & { deviceMemory?: number }
+  const deviceMemory = typeof navWithMemory.deviceMemory === 'number'
+    ? navWithMemory.deviceMemory
+    : undefined
+
+  if (hardwareConcurrency <= 4 || (deviceMemory != null && deviceMemory <= 4)) {
+    return 'low'
+  }
+  if (hardwareConcurrency >= 8 && (deviceMemory == null || deviceMemory >= 6)) {
+    return 'high'
+  }
+  return 'balanced'
+}
+
+function getResizeOptionsForDevice(deviceTier: DeviceTier): ResizeOptions {
+  if (deviceTier === 'low') {
+    return {
+      maxLongSide: 2000,
+      minShortSide: 1100,
+    }
+  }
+
+  return {
+    maxLongSide: CAPTURE_MAX_LONG_SIDE,
+    minShortSide: CAPTURE_MIN_SHORT_SIDE,
+  }
+}
+
+function formatMs(ms: number | undefined): string {
+  if (typeof ms !== 'number' || Number.isNaN(ms)) return '-'
+  return `${Math.round(ms)} ms`
+}
+
+function formatNumber(value: number | undefined, digits = 0): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
+  return value.toFixed(digits)
+}
 
 function parseGabarito(raw: string | null): string[] {
   if (!raw) return []
@@ -244,6 +288,11 @@ function CameraPage() {
   const searchParams = useSearchParams()
   const paramProvaId = searchParams.get('p')
   const supabase = useMemo(() => createClient(), [])
+  const deviceTier = useMemo(() => detectDeviceTier(), [])
+  const captureResizeOptions = useMemo(
+    () => getResizeOptionsForDevice(deviceTier),
+    [deviceTier]
+  )
 
   // Auth state
   const [userId, setUserId] = useState<string | null>(null)
@@ -278,6 +327,8 @@ function CameraPage() {
   const [captureNotice, setCaptureNotice] = useState<CaptureNotice | null>(null)
   const [captureWarnings, setCaptureWarnings] = useState<string[]>([])
   const [captureDebug, setCaptureDebug] = useState<EngineOMRResult['debug'] | null>(null)
+  const [captureTelemetry, setCaptureTelemetry] = useState<EngineOMRResult['telemetry'] | null>(null)
+  const [captureQuality, setCaptureQuality] = useState<CaptureQualityReport | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Result state
@@ -466,17 +517,23 @@ function CameraPage() {
     setCaptureNotice(null)
     setCaptureWarnings([])
     setCaptureDebug(null)
+    setCaptureTelemetry(null)
+    setCaptureQuality(null)
   }
 
   function showCaptureFailure(
     message: string,
     debug?: EngineOMRResult['debug'] | null,
-    warnings: string[] = []
+    warnings: string[] = [],
+    telemetry?: EngineOMRResult['telemetry'] | null,
+    quality?: CaptureQualityReport | null
   ) {
     setCaptureError(message)
     setCaptureNotice(null)
     setCaptureWarnings(warnings)
     setCaptureDebug(debug ?? null)
+    setCaptureTelemetry(telemetry ?? null)
+    setCaptureQuality(quality ?? null)
   }
 
   function openResultReview(
@@ -486,16 +543,77 @@ function CameraPage() {
       notice?: CaptureNotice | null
       warnings?: string[]
       debug?: EngineOMRResult['debug'] | null
+      telemetry?: EngineOMRResult['telemetry'] | null
+      quality?: CaptureQualityReport | null
     }
   ) {
     resetCaptureFeedback()
     setCaptureNotice(options?.notice ?? null)
     setCaptureWarnings(options?.warnings ?? [])
     setCaptureDebug(options?.debug ?? null)
+    setCaptureTelemetry(options?.telemetry ?? null)
+    setCaptureQuality(options?.quality ?? null)
     setCurrentRespostas(respostas)
     setCurrentAlunoId(alunoId)
     setEditingQuestion(null)
     setScreen('result')
+  }
+
+  function renderDiagnosticDetails(options?: { title?: string; showImage?: boolean }) {
+    if (!captureDebug && !captureTelemetry && !captureQuality) return null
+    const title = options?.title ?? 'Diagnostico OMR'
+    const showImage = options?.showImage ?? true
+
+    const telemetryRows = captureTelemetry ? [
+      ['Perfil do aparelho', captureTelemetry.deviceTier === 'low' ? 'leve' : captureTelemetry.deviceTier === 'high' ? 'forte' : 'equilibrado'],
+      ['Tempo total', formatMs(captureTelemetry.totalMs)],
+      ['Pre-processamento', formatMs(captureTelemetry.preprocessMs)],
+      ['Detectar folha', formatMs(captureTelemetry.pageDetectMs)],
+      ['Detectar marcadores', formatMs(captureTelemetry.markerDetectMs)],
+      ['Analisar candidatos', formatMs(captureTelemetry.analysisMs)],
+      ['Leitura de QR', formatMs(captureTelemetry.qrMs)],
+      ['Leitura de bolhas', formatMs(captureTelemetry.bubbleMs)],
+      ['Gerar diagnostico', formatMs(captureTelemetry.debugMs)],
+      ['Candidatos', String(captureTelemetry.candidateCount)],
+      ['Rotacoes testadas', String(captureTelemetry.orientationChecks)],
+      ['Origem escolhida', captureTelemetry.selectedSource === 'page' ? 'folha' : captureTelemetry.selectedSource === 'markers' ? 'marcadores' : '-'],
+      ['Parada antecipada', captureTelemetry.fastPathUsed ? 'sim' : 'nao'],
+    ] : []
+
+    const qualityRows = captureQuality ? [
+      ['Resolucao', `${captureQuality.longestSide}x${captureQuality.shortestSide}`],
+      ['Brilho', formatNumber(captureQuality.brightness)],
+      ['Contraste', formatNumber(captureQuality.contrast)],
+      ['Nitidez', formatNumber(captureQuality.sharpness, 1)],
+    ] : []
+
+    const rows = [...telemetryRows, ...qualityRows]
+
+    return (
+      <details className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-left">
+        <summary className="cursor-pointer text-sm font-medium text-slate-200">
+          {title}
+        </summary>
+        {showImage && captureDebug && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={captureDebug.imageUrl}
+            alt="Diagnostico OMR"
+            className="mt-3 w-full rounded-lg border border-slate-700"
+          />
+        )}
+        {rows.length > 0 && (
+          <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-300 sm:grid-cols-2">
+            {rows.map(([label, value]) => (
+              <div key={label} className="rounded-md border border-slate-800 bg-slate-950/60 px-2 py-2">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
+                <div className="mt-1 font-medium text-slate-100">{value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
+    )
   }
 
   async function handleLiveCapture(canvas: HTMLCanvasElement) {
@@ -504,7 +622,8 @@ function CameraPage() {
     setProcessingMsg('Processando camera ao vivo...')
 
     try {
-      const qualityWarnings = analyzeCaptureQuality(canvas).warnings
+      const qualityReport = analyzeCaptureQuality(canvas)
+      const qualityWarnings = qualityReport.warnings
 
       if (omrReady && omrEngineRef.current) {
         setProcessingMsg('Processando OMR...')
@@ -517,7 +636,8 @@ function CameraPage() {
           nalts,
           prova?.tipos_questoes || undefined,
           prova?.criterio_discursiva || undefined,
-          prova?.id || undefined
+          prova?.id || undefined,
+          { deviceTier }
         ) as EngineOMRResult
 
         if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
@@ -531,7 +651,9 @@ function CameraPage() {
             showCaptureFailure(
               'O cartï¿½o foi detectado, mas as marcaï¿½ï¿½es nï¿½o ficaram legï¿½veis o bastante para corrigir com seguranï¿½a.',
               result.debug ?? null,
-              qualityWarnings
+              qualityWarnings,
+              result.telemetry ?? null,
+              qualityReport
             )
             return
           }
@@ -540,7 +662,9 @@ function CameraPage() {
             showCaptureFailure(
               `Este cartï¿½o pertence ï¿½ prova ${result.qr.provaId}. Confira se a prova selecionada estï¿½ correta.`,
               result.debug ?? null,
-              qualityWarnings
+              qualityWarnings,
+              result.telemetry ?? null,
+              qualityReport
             )
             return
           }
@@ -554,6 +678,8 @@ function CameraPage() {
               },
               warnings,
               debug: result.debug ?? null,
+              telemetry: result.telemetry ?? null,
+              quality: qualityReport,
             })
             return
           }
@@ -567,6 +693,8 @@ function CameraPage() {
               },
               warnings,
               debug: result.debug ?? null,
+              telemetry: result.telemetry ?? null,
+              quality: qualityReport,
             })
             return
           }
@@ -582,6 +710,8 @@ function CameraPage() {
               },
               warnings,
               debug: result.debug ?? null,
+              telemetry: result.telemetry ?? null,
+              quality: qualityReport,
             })
             return
           }
@@ -596,12 +726,16 @@ function CameraPage() {
             } : null,
             warnings,
             debug: result.debug ?? null,
+            telemetry: result.telemetry ?? null,
+            quality: qualityReport,
           })
         } else {
           showCaptureFailure(
             result?.mensagem || 'Nï¿½o foi possï¿½vel ler o cartï¿½o. Tente novamente com a foto mais nï¿½tida.',
             result?.debug ?? null,
-            qualityWarnings
+            qualityWarnings,
+            result?.telemetry ?? null,
+            qualityReport
           )
         }
       } else {
@@ -628,11 +762,9 @@ function CameraPage() {
     setProcessingMsg('Redimensionando imagem...')
 
     try {
-      const canvas = await resizeImage(file, {
-        maxLongSide: CAPTURE_MAX_LONG_SIDE,
-        minShortSide: CAPTURE_MIN_SHORT_SIDE,
-      })
-      const qualityWarnings = analyzeCaptureQuality(canvas).warnings
+      const canvas = await resizeImage(file, captureResizeOptions)
+      const qualityReport = analyzeCaptureQuality(canvas)
+      const qualityWarnings = qualityReport.warnings
 
       if (omrReady && omrEngineRef.current) {
         setProcessingMsg('Processando OMR...')
@@ -645,7 +777,8 @@ function CameraPage() {
           nalts,
           prova?.tipos_questoes || undefined,
           prova?.criterio_discursiva || undefined,
-          prova?.id || undefined
+          prova?.id || undefined,
+          { deviceTier }
         ) as EngineOMRResult
 
         if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
@@ -659,7 +792,9 @@ function CameraPage() {
             showCaptureFailure(
               'O cart�o foi detectado, mas as marca��es n�o ficaram leg�veis o bastante para corrigir com seguran�a.',
               result.debug ?? null,
-              qualityWarnings
+              qualityWarnings,
+              result.telemetry ?? null,
+              qualityReport
             )
             return
           }
@@ -667,7 +802,10 @@ function CameraPage() {
           if (prova && result.qr?.provaId && result.qr.provaId !== prova.id) {
             showCaptureFailure(
               `Este cart�o pertence � prova ${result.qr.provaId}. Confira se a prova selecionada est� correta.`,
-              result.debug ?? null
+              result.debug ?? null,
+              qualityWarnings,
+              result.telemetry ?? null,
+              qualityReport
             )
             return
           }
@@ -681,6 +819,8 @@ function CameraPage() {
               },
               warnings,
               debug: result.debug ?? null,
+              telemetry: result.telemetry ?? null,
+              quality: qualityReport,
             })
             return
           }
@@ -694,6 +834,8 @@ function CameraPage() {
               },
               warnings,
               debug: result.debug ?? null,
+              telemetry: result.telemetry ?? null,
+              quality: qualityReport,
             })
             return
           }
@@ -709,6 +851,8 @@ function CameraPage() {
               },
               warnings,
               debug: result.debug ?? null,
+              telemetry: result.telemetry ?? null,
+              quality: qualityReport,
             })
             return
           }
@@ -721,12 +865,16 @@ function CameraPage() {
             } : null,
             warnings,
             debug: result.debug ?? null,
+            telemetry: result.telemetry ?? null,
+            quality: qualityReport,
           })
         } else {
           showCaptureFailure(
             result?.mensagem || 'N�o foi poss�vel ler o cart�o. Tente novamente com a foto mais n�tida.',
             result?.debug ?? null,
-            qualityWarnings
+            qualityWarnings,
+            result?.telemetry ?? null,
+            qualityReport
           )
         }
       } else {
@@ -1199,7 +1347,7 @@ function CameraPage() {
                 </div>
               )}
 
-              {captureError && captureDebug && (
+              {captureDebug && (
                 <details className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-left">
                   <summary className="cursor-pointer text-sm font-medium text-slate-200">
                     Diagnóstico OMR
@@ -1211,6 +1359,11 @@ function CameraPage() {
                     className="mt-3 w-full rounded-lg border border-slate-700"
                   />
                 </details>
+              )}
+              {(captureTelemetry || captureQuality) && (
+                <div className="mt-3">
+                  {renderDiagnosticDetails({ title: 'Telemetria OMR', showImage: false })}
+                </div>
               )}
             </div>
 
@@ -1260,6 +1413,12 @@ function CameraPage() {
                   className="mt-3 w-full rounded-lg border border-slate-700"
                 />
               </details>
+            )}
+
+            {(captureTelemetry || captureQuality) && (
+              <div className="mb-3">
+                {renderDiagnosticDetails({ title: 'Telemetria OMR', showImage: false })}
+              </div>
             )}
 
             {/* Student selection */}
