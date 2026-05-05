@@ -262,12 +262,7 @@ export class OMREngine {
       telemetry.pageDetectMs = this._now() - pageDetectStartedAt
       if (pagina) {
         const paginaOrientada = this._alinharOrientacao(src, pagina, 'page')
-        const warpedPaginaBase = this._corrigirPerspectivaPagina(src, paginaOrientada)
-        const warpedPaginaRefinada = this._refinarWarpPaginaComMarcadores(warpedPaginaBase)
-        const warpedPagina = warpedPaginaRefinada || warpedPaginaBase
-        if (warpedPaginaRefinada) {
-          warpedPaginaBase.delete()
-        }
+        const warpedPagina = this._corrigirPerspectivaPagina(src, paginaOrientada)
         candidatosWarp.push({ mat: warpedPagina, source: 'page' })
         allMats.push(warpedPagina)
       }
@@ -1092,64 +1087,6 @@ export class OMREngine {
     }
 
     return alinhados
-  }
-
-  private _refinarWarpPaginaComMarcadores(warpedPagina: any): any | null {
-    const gray = new cv.Mat()
-    const blurred = new cv.Mat()
-    const bin1 = new cv.Mat()
-    const temporarios: any[] = []
-
-    try {
-      cv.cvtColor(warpedPagina, gray, cv.COLOR_RGBA2GRAY)
-      const normalizedGray = this._normalizarIluminacao(gray)
-      temporarios.push(normalizedGray)
-
-      cv.GaussianBlur(normalizedGray, blurred, new cv.Size(5, 5), 0)
-      cv.threshold(blurred, bin1, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
-
-      let marcadores = this._encontrarMarcadores(bin1)
-
-      if (!marcadores) {
-        const bin2Raw = new cv.Mat()
-        cv.adaptiveThreshold(
-          normalizedGray,
-          bin2Raw,
-          255,
-          cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-          cv.THRESH_BINARY_INV,
-          51,
-          10
-        )
-        const bin2 = this._refinarMascaraBolhas(bin2Raw)
-        bin2Raw.delete()
-        temporarios.push(bin2)
-        marcadores = this._encontrarMarcadores(bin2)
-      }
-
-      if (!marcadores) {
-        const bin3Raw = new cv.Mat()
-        cv.threshold(normalizedGray, bin3Raw, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
-        const bin3 = this._refinarMascaraBolhas(bin3Raw)
-        bin3Raw.delete()
-        temporarios.push(bin3)
-        marcadores = this._encontrarMarcadores(bin3)
-      }
-
-      if (!marcadores) return null
-
-      const marcadoresAlinhados = this._alinharOrientacao(warpedPagina, marcadores, 'markers')
-      return this._corrigirPerspectiva(warpedPagina, marcadoresAlinhados)
-    } catch {
-      return null
-    } finally {
-      gray.delete()
-      blurred.delete()
-      bin1.delete()
-      for (const mat of temporarios) {
-        if (mat) mat.delete()
-      }
-    }
   }
 
   private _corrigirPerspectiva(src: any, m: Marcadores): any {
