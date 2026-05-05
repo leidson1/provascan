@@ -261,10 +261,17 @@ export class OMREngine {
       const pagina = this._encontrarContornoPagina(normalizedGray) || this._encontrarContornoPagina(gray)
       telemetry.pageDetectMs = this._now() - pageDetectStartedAt
       if (pagina) {
-        const paginaOrientada = this._alinharOrientacao(src, pagina, 'page')
+        const paginaRefinada = this._refinarCantosSubpixel(normalizedGray, pagina)
+        const paginaOrientada = this._alinharOrientacao(src, paginaRefinada, 'page')
         const warpedPagina = this._corrigirPerspectivaPagina(src, paginaOrientada)
         candidatosWarp.push({ mat: warpedPagina, source: 'page' })
         allMats.push(warpedPagina)
+
+        const warpedPaginaDeskew = this._criarWarpDeskewSeguro(warpedPagina)
+        if (warpedPaginaDeskew) {
+          candidatosWarp.push({ mat: warpedPaginaDeskew, source: 'page' })
+          allMats.push(warpedPaginaDeskew)
+        }
       }
 
       const markerDetectStartedAt = this._now()
@@ -1014,6 +1021,69 @@ export class OMREngine {
 
   // ── CORREÇÃO DE PERSPECTIVA ─────────────────────────────────
 
+  private _refinarCantosSubpixel(gray: any, cantos: Marcadores): Marcadores {
+    if (
+      typeof cv.cornerSubPix !== 'function' ||
+      typeof cv.TermCriteria !== 'function' ||
+      typeof cv.CV_32FC2 === 'undefined'
+    ) {
+      return cantos
+    }
+
+    const limitar = (valor: number, maximo: number) => Math.min(Math.max(valor, 0), Math.max(0, maximo))
+    const pontosOriginais = [cantos.tl, cantos.tr, cantos.bl, cantos.br]
+    const corners = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      limitar(cantos.tl.x, gray.cols - 1), limitar(cantos.tl.y, gray.rows - 1),
+      limitar(cantos.tr.x, gray.cols - 1), limitar(cantos.tr.y, gray.rows - 1),
+      limitar(cantos.bl.x, gray.cols - 1), limitar(cantos.bl.y, gray.rows - 1),
+      limitar(cantos.br.x, gray.cols - 1), limitar(cantos.br.y, gray.rows - 1),
+    ])
+
+    try {
+      const termType = (cv.TermCriteria_EPS || 2) + (cv.TermCriteria_MAX_ITER || 1)
+      const criteria = new cv.TermCriteria(termType, 30, 0.01)
+      cv.cornerSubPix(gray, corners, new cv.Size(11, 11), new cv.Size(-1, -1), criteria)
+
+      const refinados: Ponto[] = []
+      for (let i = 0; i < 4; i++) {
+        const ponto = corners.floatPtr(i, 0)
+        refinados.push({
+          x: limitar(ponto[0], gray.cols - 1),
+          y: limitar(ponto[1], gray.rows - 1),
+        })
+      }
+
+      const ordenados = this._ordenarPontos(refinados)
+      if (!ordenados) return cantos
+
+      const pontosRefinados = [ordenados.tl, ordenados.tr, ordenados.bl, ordenados.br]
+      const maxShift = Math.max(12, Math.min(gray.cols, gray.rows) * 0.035)
+      for (let i = 0; i < 4; i++) {
+        const shift = Math.hypot(
+          pontosRefinados[i].x - pontosOriginais[i].x,
+          pontosRefinados[i].y - pontosOriginais[i].y
+        )
+        if (shift > maxShift) return cantos
+      }
+
+      const areaOriginal = this._calcularAreaQuadrilatero(cantos)
+      const areaRefinada = this._calcularAreaQuadrilatero(ordenados)
+      if (
+        areaOriginal <= 0 ||
+        areaRefinada < areaOriginal * 0.85 ||
+        areaRefinada > areaOriginal * 1.15
+      ) {
+        return cantos
+      }
+
+      return ordenados
+    } catch {
+      return cantos
+    } finally {
+      corners.delete()
+    }
+  }
+
   private _rotacionar90Cantos(cantos: Marcadores): Marcadores {
     return { tl: cantos.bl, tr: cantos.tl, bl: cantos.br, br: cantos.tr }
   }
@@ -1139,6 +1209,110 @@ export class OMREngine {
     M.delete()
 
     return warped
+  }
+
+  private _criarWarpDeskewSeguro(warped: any): any | null {
+    try {
+      const angle = this._estimarCorrecaoDeskew(warped)
+      if (angle == null) return null
+      return this._rotacionarGraus(warped, angle)
+    } catch {
+      return null
+    }
+  }
+
+  private _estimarCorrecaoDeskew(warped: any): number | null {
+    if (typeof cv.HoughLinesP !== 'function') return null
+
+    const gray = new cv.Mat()
+    const normalized = new cv.Mat()
+    const edges = new cv.Mat()
+    const lines = new cv.Mat()
+
+    try {
+      cv.cvtColor(warped, gray, cv.COLOR_RGBA2GRAY)
+      const prepared = this._normalizarIluminacao(gray)
+      prepared.copyTo(normalized)
+      prepared.delete()
+
+      cv.Canny(normalized, edges, 50, 150, 3, false)
+      cv.HoughLinesP(edges, lines, 1, Math.PI / 180, 70, Math.round(Math.min(warped.cols, warped.rows) * 0.18), 18)
+
+      if (lines.rows < 3) return null
+
+      let weightedCorrection = 0
+      let totalWeight = 0
+      let considered = 0
+      const corrections: Array<{ correction: number; weight: number }> = []
+
+      for (let i = 0; i < lines.rows; i++) {
+        const line = lines.intPtr(i, 0)
+        const dx = line[2] - line[0]
+        const dy = line[3] - line[1]
+        const length = Math.hypot(dx, dy)
+        if (length < Math.min(warped.cols, warped.rows) * 0.18) continue
+
+        let theta = Math.atan2(dy, dx) * 180 / Math.PI
+        if (theta < 0) theta += 180
+
+        let correction: number | null = null
+        if (theta <= 12 || theta >= 168) {
+          correction = theta >= 90 ? 180 - theta : -theta
+        } else if (Math.abs(theta - 90) <= 12) {
+          correction = 90 - theta
+        }
+
+        if (correction == null) continue
+
+        corrections.push({ correction, weight: length })
+        weightedCorrection += correction * length
+        totalWeight += length
+        considered += 1
+      }
+
+      if (considered < 3 || totalWeight <= 0) return null
+
+      const averageCorrection = weightedCorrection / totalWeight
+      if (Math.abs(averageCorrection) < 0.35 || Math.abs(averageCorrection) > 7.5) {
+        return null
+      }
+
+      let weightedDeviation = 0
+      for (const item of corrections) {
+        weightedDeviation += Math.abs(item.correction - averageCorrection) * item.weight
+      }
+      const averageDeviation = weightedDeviation / totalWeight
+      if (averageDeviation > 2.4) return null
+
+      return averageCorrection
+    } catch {
+      return null
+    } finally {
+      gray.delete()
+      normalized.delete()
+      edges.delete()
+      lines.delete()
+    }
+  }
+
+  private _rotacionarGraus(src: any, angle: number): any {
+    if (typeof cv.getRotationMatrix2D !== 'function' || typeof cv.warpAffine !== 'function') {
+      return src.clone()
+    }
+    const center = new cv.Point(src.cols / 2, src.rows / 2)
+    const matrix = cv.getRotationMatrix2D(center, angle, 1)
+    const rotated = new cv.Mat()
+    cv.warpAffine(
+      src,
+      rotated,
+      matrix,
+      new cv.Size(src.cols, src.rows),
+      cv.INTER_LINEAR,
+      cv.BORDER_CONSTANT,
+      new cv.Scalar(255, 255, 255, 255)
+    )
+    matrix.delete()
+    return rotated
   }
 
   private _lerQRProgressivo(matWarped: any): ReturnType<typeof this._parseQRData> {
