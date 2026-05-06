@@ -256,6 +256,7 @@ export class OMREngine {
       telemetry.preprocessMs = this._now() - preprocessStartedAt
 
       const candidatosWarp: Array<{ mat: any; source: 'page' | 'markers' }> = []
+      let warpedPaginaBase: any = null
 
       const pageDetectStartedAt = this._now()
       const pagina = this._encontrarContornoPagina(normalizedGray) || this._encontrarContornoPagina(gray)
@@ -264,14 +265,9 @@ export class OMREngine {
         const paginaRefinada = this._refinarCantosSubpixel(normalizedGray, pagina)
         const paginaOrientada = this._alinharOrientacao(src, paginaRefinada, 'page')
         const warpedPagina = this._corrigirPerspectivaPagina(src, paginaOrientada)
+        warpedPaginaBase = warpedPagina
         candidatosWarp.push({ mat: warpedPagina, source: 'page' })
         allMats.push(warpedPagina)
-
-        const warpedPaginaDeskew = this._criarWarpDeskewSeguro(warpedPagina)
-        if (warpedPaginaDeskew) {
-          candidatosWarp.push({ mat: warpedPaginaDeskew, source: 'page' })
-          allMats.push(warpedPaginaDeskew)
-        }
       }
 
       const markerDetectStartedAt = this._now()
@@ -352,6 +348,46 @@ export class OMREngine {
             },
           }
           break
+        }
+      }
+
+      const melhorAtualConfiante = analise
+        ? this._atingiuScoreConfiavel(analise, nq, expectedProvaId)
+        : false
+
+      // O deskew entra apenas como resgate. Assim evitamos piorar fotos
+      // que já vieram boas, especialmente em capturas horizontais.
+      if (warpedPaginaBase && !melhorAtualConfiante) {
+        const warpedPaginaDeskew = this._criarWarpDeskewSeguro(warpedPaginaBase)
+        if (warpedPaginaDeskew) {
+          allMats.push(warpedPaginaDeskew)
+          telemetry.candidateCount += 1
+
+          const tentativaDeskew = this._analisarMelhorOrientacao(
+            warpedPaginaDeskew,
+            nq,
+            nalts,
+            letrasPerQ,
+            tiposQuestoes,
+            criterioDiscursiva,
+            expectedProvaId
+          )
+
+          const deskewConfiante = this._atingiuScoreConfiavel(tentativaDeskew, nq, expectedProvaId)
+          const deveSubstituir =
+            !analise ||
+            tentativaDeskew.score > analise.score + 10 ||
+            (deskewConfiante && tentativaDeskew.score >= analise.score - 5)
+
+          if (deveSubstituir) {
+            analise = {
+              ...tentativaDeskew,
+              telemetry: {
+                ...tentativaDeskew.telemetry,
+                selectedSource: 'page',
+              },
+            }
+          }
         }
       }
 
