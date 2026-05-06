@@ -101,6 +101,10 @@ interface Ponto {
   h?: number
 }
 
+interface LayoutTransform {
+  matrix: number[]
+}
+
 // OpenCV.js global types (minimal declarations for what we use)
 declare global {
   interface Window {
@@ -418,7 +422,16 @@ export class OMREngine {
     try {
       const bubbleStartedAt = this._now()
       cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
-      const respostas = this._lerBolhasMista(wGray, nq, nalts, letrasPerQ, tiposQuestoes, criterioDiscursiva)
+      const layoutTransform = this._estimarTransformacaoLayout(wGray)
+      const respostas = this._lerBolhasMista(
+        wGray,
+        nq,
+        nalts,
+        letrasPerQ,
+        tiposQuestoes,
+        criterioDiscursiva,
+        layoutTransform
+      )
       const bubbleMs = this._now() - bubbleStartedAt
       const structuralScore = this._pontuarEstruturaEsperada(wGray, nq, nalts, tiposQuestoes, criterioDiscursiva)
 
@@ -427,7 +440,16 @@ export class OMREngine {
       if (includeDebug) {
         const debugStartedAt = this._now()
         try {
-          debug = this._gerarDebugMista(warped, wGray, nq, nalts, respostas, tiposQuestoes, criterioDiscursiva)
+          debug = this._gerarDebugMista(
+            warped,
+            wGray,
+            nq,
+            nalts,
+            respostas,
+            tiposQuestoes,
+            criterioDiscursiva,
+            layoutTransform
+          )
         } catch {
           // debug falhou, ignora
         } finally {
@@ -670,6 +692,165 @@ export class OMREngine {
     const desvio = Math.abs(densidade - alvo)
     if (desvio >= tolerancia) return 0
     return maxScore * (1 - desvio / tolerancia)
+  }
+
+  private _estimarTransformacaoLayout(wGray: any): LayoutTransform | null {
+    const px = OMREngine.PX_MM
+    const mc = Math.round((CARTAO.margem + CARTAO.marcador / 2) * px)
+    const rc = Math.round((CARTAO.largura - CARTAO.margem - CARTAO.marcador / 2) * px)
+    const bc = Math.round((CARTAO.altura - CARTAO.margem - CARTAO.marcador / 2) * px)
+    const expected: Marcadores = {
+      tl: { x: mc, y: mc },
+      tr: { x: rc, y: mc },
+      bl: { x: mc, y: bc },
+      br: { x: rc, y: bc },
+    }
+
+    const normalized = this._normalizarIluminacao(wGray)
+    const bin = new cv.Mat()
+    const halfWindow = Math.round(20 * px)
+
+    try {
+      cv.threshold(normalized, bin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+
+      const tl = this._localizarMarcadorEsperado(bin, expected.tl, halfWindow)
+      const tr = this._localizarMarcadorEsperado(bin, expected.tr, halfWindow)
+      const bl = this._localizarMarcadorEsperado(bin, expected.bl, halfWindow)
+      const br = this._localizarMarcadorEsperado(bin, expected.br, halfWindow)
+      if (!tl || !tr || !bl || !br) return null
+
+      const deslocamentos = [
+        Math.hypot(tl.x - expected.tl.x, tl.y - expected.tl.y),
+        Math.hypot(tr.x - expected.tr.x, tr.y - expected.tr.y),
+        Math.hypot(bl.x - expected.bl.x, bl.y - expected.bl.y),
+        Math.hypot(br.x - expected.br.x, br.y - expected.br.y),
+      ]
+      const deslocamentoMedio = deslocamentos.reduce((soma, valor) => soma + valor, 0) / deslocamentos.length
+      if (deslocamentoMedio < 1.25 || deslocamentoMedio > halfWindow * 0.85) return null
+
+      const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        expected.tl.x, expected.tl.y,
+        expected.tr.x, expected.tr.y,
+        expected.bl.x, expected.bl.y,
+        expected.br.x, expected.br.y,
+      ])
+      const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        tl.x, tl.y,
+        tr.x, tr.y,
+        bl.x, bl.y,
+        br.x, br.y,
+      ])
+      const matrix = cv.getPerspectiveTransform(srcPts, dstPts)
+      const rawMatrix = (
+        matrix.data64F
+          ? Array.from(matrix.data64F)
+          : Array.from(matrix.data32F || [])
+      ) as number[]
+
+      srcPts.delete()
+      dstPts.delete()
+      matrix.delete()
+
+      if (rawMatrix.length !== 9) return null
+      return { matrix: rawMatrix }
+    } finally {
+      normalized.delete()
+      bin.delete()
+    }
+  }
+
+  private _localizarMarcadorEsperado(matBin: any, expected: Ponto, halfWindow: number): Ponto | null {
+    if (
+      expected.x < 0 ||
+      expected.y < 0 ||
+      expected.x >= matBin.cols ||
+      expected.y >= matBin.rows
+    ) {
+      return null
+    }
+
+    const x = Math.max(0, Math.round(expected.x - halfWindow))
+    const y = Math.max(0, Math.round(expected.y - halfWindow))
+    const w = Math.max(1, Math.min(matBin.cols - x, halfWindow * 2))
+    const h = Math.max(1, Math.min(matBin.rows - y, halfWindow * 2))
+    if (w <= 0 || h <= 0 || x + w > matBin.cols || y + h > matBin.rows) {
+      return null
+    }
+    const roiRect = new cv.Rect(x, y, w, h)
+    const roi = matBin.roi(roiRect)
+    const contours = new cv.MatVector()
+    const hierarchy = new cv.Mat()
+    const targetSize = CARTAO.marcador * OMREngine.PX_MM
+    let best: Ponto | null = null
+    let bestScore = Infinity
+
+    try {
+      cv.findContours(roi, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+      for (let i = 0; i < contours.size(); i++) {
+        const cnt = contours.get(i)
+        const area = Math.abs(cv.contourArea(cnt))
+        const rect = cv.boundingRect(cnt)
+        cnt.delete()
+
+        if (area < targetSize * targetSize * 0.2 || area > targetSize * targetSize * 3.2) continue
+        if (rect.width <= 0 || rect.height <= 0) continue
+
+        const aspect = rect.width / rect.height
+        if (aspect < 0.55 || aspect > 1.8) continue
+
+        const solidez = area / (rect.width * rect.height)
+        if (solidez < 0.6) continue
+
+        const cx = x + rect.x + rect.width / 2
+        const cy = y + rect.y + rect.height / 2
+        const distance = Math.hypot(cx - expected.x, cy - expected.y)
+        const sizeError =
+          Math.abs(rect.width - targetSize) / targetSize +
+          Math.abs(rect.height - targetSize) / targetSize
+        const score = distance / halfWindow + sizeError * 0.75 + (1 - solidez) * 0.55
+
+        if (score < bestScore) {
+          bestScore = score
+          best = { x: cx, y: cy, area, w: rect.width, h: rect.height }
+        }
+      }
+    } finally {
+      roi.delete()
+      contours.delete()
+      hierarchy.delete()
+    }
+
+    return best
+  }
+
+  private _mapearPosicoesBolhas(
+    posicoes: BubblePosition[][],
+    layoutTransform?: LayoutTransform | null
+  ): Ponto[][] {
+    return posicoes.map((linha) =>
+      linha.map((bolha) => {
+        const original = {
+          x: bolha.cx * OMREngine.PX_MM,
+          y: bolha.cy * OMREngine.PX_MM,
+        }
+        if (!layoutTransform) {
+          return original
+        }
+        return this._transformarPontoLayout(layoutTransform, original.x, original.y)
+      })
+    )
+  }
+
+  private _transformarPontoLayout(layoutTransform: LayoutTransform, x: number, y: number): Ponto {
+    const h = layoutTransform.matrix
+    const denom = h[6] * x + h[7] * y + h[8]
+    if (!Number.isFinite(denom) || Math.abs(denom) < 1e-6) {
+      return { x, y }
+    }
+    return {
+      x: (h[0] * x + h[1] * y + h[2]) / denom,
+      y: (h[3] * x + h[4] * y + h[5]) / denom,
+    }
   }
 
   private _rotacionar180(src: any): any {
@@ -1613,17 +1794,19 @@ export class OMREngine {
     nalts: number,
     letrasPerQ: string[][],
     tiposQuestoes?: string,
-    criterioDiscursiva?: number
+    criterioDiscursiva?: number,
+    layoutTransform?: LayoutTransform | null
   ): OMRResposta[] {
     const px = OMREngine.PX_MM
     const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
+    const pontosAmostra = this._mapearPosicoesBolhas(posicoes, layoutTransform)
     const raio = Math.round(CARTAO.bolhaRaio * px * 0.75)
 
     const preparedGray = this._prepararCinzaBolhas(wGray)
     const inkGray = this._realcarMarcasBolhas(preparedGray)
     try {
       const wBin1 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 15, 8)
-      const leitura1 = this._lerBolhasUmaVezMista(wBin1, inkGray, posicoes, nq, raio)
+      const leitura1 = this._lerBolhasUmaVezMista(wBin1, inkGray, pontosAmostra, nq, raio)
       wBin1.delete()
 
       let precisaFallback = false
@@ -1643,7 +1826,7 @@ export class OMREngine {
       }
 
       const wBin2 = this._criarMascaraBolhas(inkGray, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 17, 6)
-      const leitura2 = this._lerBolhasUmaVezMista(wBin2, inkGray, posicoes, nq, raio)
+      const leitura2 = this._lerBolhasUmaVezMista(wBin2, inkGray, pontosAmostra, nq, raio)
       wBin2.delete()
 
       const combinado = this._combinarLeiturasBolhas([leitura1, leitura2], nq)
@@ -1656,7 +1839,7 @@ export class OMREngine {
 
       if (ambiguas > nq * 0.3) {
         const wBin3 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_MEAN_C, 27, 5)
-        const leitura3 = this._lerBolhasUmaVezMista(wBin3, inkGray, posicoes, nq, raio)
+        const leitura3 = this._lerBolhasUmaVezMista(wBin3, inkGray, pontosAmostra, nq, raio)
         wBin3.delete()
 
         const triplo = this._combinarLeiturasBolhas([leitura1, leitura2, leitura3], nq)
@@ -1673,17 +1856,17 @@ export class OMREngine {
   private _lerBolhasUmaVezMista(
     matBin: any,
     inkGray: any,
-    posicoes: BubblePosition[][],
+    pontosAmostra: Ponto[][],
     nq: number,
     raio: number
   ): number[][] {
     const resultados: number[][] = []
     for (let q = 0; q < nq; q++) {
       const niveis: number[] = []
-      const numBolhas = posicoes[q].length
+      const numBolhas = pontosAmostra[q].length
       for (let a = 0; a < numBolhas; a++) {
-        const cx = Math.round(posicoes[q][a].cx * OMREngine.PX_MM)
-        const cy = Math.round(posicoes[q][a].cy * OMREngine.PX_MM)
+        const cx = Math.round(pontosAmostra[q][a].x)
+        const cy = Math.round(pontosAmostra[q][a].y)
         niveis.push(this._nivelBolhaHibrido(matBin, inkGray, cx, cy, raio))
       }
       resultados.push(niveis)
@@ -1799,20 +1982,22 @@ export class OMREngine {
     nalts: number,
     respostas: OMRResposta[],
     tiposQuestoes?: string,
-    criterioDiscursiva?: number
+    criterioDiscursiva?: number,
+    layoutTransform?: LayoutTransform | null
   ): { imageUrl: string; levels: DebugLevel[] } {
     const px = OMREngine.PX_MM
     const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
+    const pontosAmostra = this._mapearPosicoesBolhas(posicoes, layoutTransform)
     const raio = Math.round(CARTAO.bolhaRaio * px * 1.1)
 
     const debug = warped.clone()
 
     for (let q = 0; q < nq; q++) {
       const resp = respostas[q]
-      const numBolhas = posicoes[q].length
+      const numBolhas = pontosAmostra[q].length
       for (let a = 0; a < numBolhas; a++) {
-        const cx = Math.round(posicoes[q][a].cx * px)
-        const cy = Math.round(posicoes[q][a].cy * px)
+        const cx = Math.round(pontosAmostra[q][a].x)
+        const cy = Math.round(pontosAmostra[q][a].y)
         const nivel = resp.niveis[a]
         const nivelPct = Math.round(nivel * 100)
 
@@ -2232,11 +2417,11 @@ export class OMREngine {
       const centerMean = centerCount > 0 ? centerInk / centerCount : 0
       const ringMean = ringCount > 0 ? ringInk / ringCount : 0
       const totalMean = totalCount > 0 ? totalInk / totalCount : 0
-      const emphasis = Math.max(0, centerMean - ringMean * 0.82)
+      const emphasis = Math.max(0, centerMean - ringMean * 0.9)
 
       return Math.max(
         0,
-        Math.min(1, centerMean * 0.85 + emphasis * 0.8 + Math.max(0, totalMean - ringMean * 0.4) * 0.18)
+        Math.min(1, centerMean * 0.58 + emphasis * 1.08 + Math.max(0, totalMean - ringMean * 0.55) * 0.12)
       )
     } finally {
       if (roi) roi.delete()
@@ -2246,7 +2431,7 @@ export class OMREngine {
   private _nivelBolhaHibrido(matBin: any, matGray: any, cx: number, cy: number, raio: number): number {
     const binaryScore = this._nivelBolha(matBin, cx, cy, raio)
     const grayScore = this._nivelBolhaCinza(matGray, cx, cy, raio)
-    const combined = binaryScore * 0.55 + grayScore * 0.45 + Math.max(0, grayScore - binaryScore) * 0.2
+    const combined = binaryScore * 0.45 + grayScore * 0.55 + Math.max(0, grayScore - binaryScore) * 0.28
     return Math.max(0, Math.min(1, combined))
   }
 }
