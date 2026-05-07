@@ -43,8 +43,11 @@ type DeviceTier = 'low' | 'balanced' | 'high'
 // ── Helpers ────────────────────────────────────────────────────
 const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 // O scanner ao vivo continua pronto no projeto, mas fica desligado
-// ate estabilizarmos completamente a captura por foto nativa.
+// até estabilizarmos completamente a captura por foto nativa.
 const ENABLE_LIVE_SCANNER = false
+// Diagnóstico e telemetria seguem disponíveis para desenvolvimento/admin,
+// mas ficam ocultos para os usuários até criarmos uma área própria de testes.
+const ENABLE_OMR_DIAGNOSTICS = false
 
 function detectDeviceTier(): DeviceTier {
   if (typeof navigator === 'undefined') return 'balanced'
@@ -561,7 +564,7 @@ function CameraPage() {
 
   function renderDiagnosticDetails(options?: { title?: string; showImage?: boolean }) {
     if (!captureDebug && !captureTelemetry && !captureQuality) return null
-    const title = options?.title ?? 'Diagnostico OMR'
+    const title = options?.title ?? 'Diagnóstico OMR'
     const showImage = options?.showImage ?? true
 
     const telemetryRows = captureTelemetry ? [
@@ -573,15 +576,15 @@ function CameraPage() {
       ['Analisar candidatos', formatMs(captureTelemetry.analysisMs)],
       ['Leitura de QR', formatMs(captureTelemetry.qrMs)],
       ['Leitura de bolhas', formatMs(captureTelemetry.bubbleMs)],
-      ['Gerar diagnostico', formatMs(captureTelemetry.debugMs)],
+      ['Gerar diagnóstico', formatMs(captureTelemetry.debugMs)],
       ['Candidatos', String(captureTelemetry.candidateCount)],
-      ['Rotacoes testadas', String(captureTelemetry.orientationChecks)],
+      ['Rotações testadas', String(captureTelemetry.orientationChecks)],
       ['Origem escolhida', captureTelemetry.selectedSource === 'page' ? 'folha' : captureTelemetry.selectedSource === 'markers' ? 'marcadores' : '-'],
-      ['Parada antecipada', captureTelemetry.fastPathUsed ? 'sim' : 'nao'],
+      ['Parada antecipada', captureTelemetry.fastPathUsed ? 'sim' : 'não'],
     ] : []
 
     const qualityRows = captureQuality ? [
-      ['Resolucao', `${captureQuality.longestSide}x${captureQuality.shortestSide}`],
+      ['Resolução', `${captureQuality.longestSide}x${captureQuality.shortestSide}`],
       ['Brilho', formatNumber(captureQuality.brightness)],
       ['Contraste', formatNumber(captureQuality.contrast)],
       ['Nitidez', formatNumber(captureQuality.sharpness, 1)],
@@ -598,7 +601,7 @@ function CameraPage() {
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={captureDebug.imageUrl}
-            alt="Diagnostico OMR"
+            alt="Diagnóstico OMR"
             className="mt-3 w-full rounded-lg border border-slate-700"
           />
         )}
@@ -619,7 +622,7 @@ function CameraPage() {
   async function handleLiveCapture(canvas: HTMLCanvasElement) {
     resetCaptureFeedback()
     setProcessing(true)
-    setProcessingMsg('Processando camera ao vivo...')
+    setProcessingMsg('Processando câmera ao vivo...')
 
     try {
       const qualityReport = analyzeCaptureQuality(canvas)
@@ -649,7 +652,7 @@ function CameraPage() {
 
           if (!hasUsableOMRRead(result.respostas)) {
             showCaptureFailure(
-              'O cartï¿½o foi detectado, mas as marcaï¿½ï¿½es nï¿½o ficaram legï¿½veis o bastante para corrigir com seguranï¿½a.',
+              'O cartão foi detectado, mas as marcações não ficaram legíveis o bastante para corrigir com segurança.',
               result.debug ?? null,
               qualityWarnings,
               result.telemetry ?? null,
@@ -660,7 +663,7 @@ function CameraPage() {
 
           if (prova && result.qr?.provaId && result.qr.provaId !== prova.id) {
             showCaptureFailure(
-              `Este cartï¿½o pertence ï¿½ prova ${result.qr.provaId}. Confira se a prova selecionada estï¿½ correta.`,
+              `Este cartão pertence à prova ${result.qr.provaId}. Confira se a prova selecionada está correta.`,
               result.debug ?? null,
               qualityWarnings,
               result.telemetry ?? null,
@@ -673,8 +676,8 @@ function CameraPage() {
             openResultReview(respostasLetras, null, {
               notice: {
                 tone: 'warning',
-                title: 'QR nï¿½o lido',
-                message: 'As respostas foram lidas, mas o QR do aluno nï¿½o foi identificado. Selecione o aluno abaixo e confira as questï¿½es destacadas.',
+                title: 'QR não lido',
+                message: 'As respostas foram lidas, mas o QR do aluno não foi identificado. Selecione o aluno abaixo e confira as questões destacadas.',
               },
               warnings,
               debug: result.debug ?? null,
@@ -688,8 +691,8 @@ function CameraPage() {
             openResultReview(respostasLetras, null, {
               notice: {
                 tone: 'info',
-                title: 'Cartï¿½o reserva',
-                message: 'O cartï¿½o lido ï¿½ de reserva. Selecione o aluno que usou este cartï¿½o e confirme a correï¿½ï¿½o.',
+                title: 'Cartão reserva',
+                message: 'O cartão lido é de reserva. Selecione o aluno que usou este cartão e confirme a correção.',
               },
               warnings,
               debug: result.debug ?? null,
@@ -705,8 +708,8 @@ function CameraPage() {
             openResultReview(respostasLetras, null, {
               notice: {
                 tone: 'warning',
-                title: 'Aluno nï¿½o localizado',
-                message: 'O QR foi lido, mas o aluno nï¿½o pertence ï¿½ turma carregada. Confira se o cartï¿½o ï¿½ da turma correta.',
+                title: 'Aluno não localizado',
+                message: 'O QR foi lido, mas o aluno não pertence à turma carregada. Confira se o cartão é da turma correta.',
               },
               warnings,
               debug: result.debug ?? null,
@@ -721,7 +724,7 @@ function CameraPage() {
               tone: 'warning',
               title: 'Leitura com alerta',
               message: omrWarnings.length > 0
-                ? 'Algumas questï¿½es ficaram vazias ou com dupla marcaï¿½ï¿½o. Confira antes de confirmar.'
+                ? 'Algumas questões ficaram vazias ou com dupla marcação. Confira antes de confirmar.'
                 : 'A leitura funcionou, mas a captura apresentou sinais de baixa qualidade.',
             } : null,
             warnings,
@@ -731,7 +734,7 @@ function CameraPage() {
           })
         } else {
           showCaptureFailure(
-            result?.mensagem || 'Nï¿½o foi possï¿½vel ler o cartï¿½o. Tente novamente com a foto mais nï¿½tida.',
+            result?.mensagem || 'Não foi possível ler o cartão. Tente novamente com a foto mais nítida.',
             result?.debug ?? null,
             qualityWarnings,
             result?.telemetry ?? null,
@@ -741,8 +744,8 @@ function CameraPage() {
       } else {
         offerManualEntry({
           tone: 'warning',
-          title: 'Leitura automï¿½tica indisponï¿½vel',
-          message: 'O motor de leitura nï¿½o carregou neste aparelho. Vocï¿½ ainda pode lanï¿½ar a correï¿½ï¿½o manualmente.',
+          title: 'Leitura automática indisponível',
+          message: 'O motor de leitura não carregou neste aparelho. Você ainda pode lançar a correção manualmente.',
         })
       }
     } catch (err: unknown) {
@@ -790,7 +793,7 @@ function CameraPage() {
 
           if (!hasUsableOMRRead(result.respostas)) {
             showCaptureFailure(
-              'O cart�o foi detectado, mas as marca��es n�o ficaram leg�veis o bastante para corrigir com seguran�a.',
+              'O cartão foi detectado, mas as marcações não ficaram legíveis o bastante para corrigir com segurança.',
               result.debug ?? null,
               qualityWarnings,
               result.telemetry ?? null,
@@ -801,7 +804,7 @@ function CameraPage() {
 
           if (prova && result.qr?.provaId && result.qr.provaId !== prova.id) {
             showCaptureFailure(
-              `Este cart�o pertence � prova ${result.qr.provaId}. Confira se a prova selecionada est� correta.`,
+              `Este cartão pertence à prova ${result.qr.provaId}. Confira se a prova selecionada está correta.`,
               result.debug ?? null,
               qualityWarnings,
               result.telemetry ?? null,
@@ -814,8 +817,8 @@ function CameraPage() {
             openResultReview(respostasLetras, null, {
               notice: {
                 tone: 'warning',
-                title: 'QR n�o lido',
-                message: 'As respostas foram lidas, mas o QR do aluno n�o foi identificado. Selecione o aluno abaixo e confira as quest�es destacadas.',
+                title: 'QR não lido',
+                message: 'As respostas foram lidas, mas o QR do aluno não foi identificado. Selecione o aluno abaixo e confira as questões destacadas.',
               },
               warnings,
               debug: result.debug ?? null,
@@ -829,8 +832,8 @@ function CameraPage() {
             openResultReview(respostasLetras, null, {
               notice: {
                 tone: 'info',
-                title: 'Cart�o reserva',
-                message: 'O cart�o lido � de reserva. Selecione o aluno que usou este cart�o e confirme a corre��o.',
+                title: 'Cartão reserva',
+                message: 'O cartão lido é de reserva. Selecione o aluno que usou este cartão e confirme a correção.',
               },
               warnings,
               debug: result.debug ?? null,
@@ -846,8 +849,8 @@ function CameraPage() {
             openResultReview(respostasLetras, null, {
               notice: {
                 tone: 'warning',
-                title: 'Aluno n�o localizado',
-                message: 'O QR foi lido, mas o aluno n�o pertence � turma carregada. Confira se o cart�o � da turma correta.',
+                title: 'Aluno não localizado',
+                message: 'O QR foi lido, mas o aluno não pertence à turma carregada. Confira se o cartão é da turma correta.',
               },
               warnings,
               debug: result.debug ?? null,
@@ -861,7 +864,7 @@ function CameraPage() {
             notice: warnings.length > 0 ? {
               tone: 'warning',
               title: 'Leitura com alerta',
-              message: 'Algumas quest�es ficaram vazias ou com dupla marca��o. Confira antes de confirmar.',
+              message: 'Algumas questões ficaram vazias ou com dupla marcação. Confira antes de confirmar.',
             } : null,
             warnings,
             debug: result.debug ?? null,
@@ -870,7 +873,7 @@ function CameraPage() {
           })
         } else {
           showCaptureFailure(
-            result?.mensagem || 'N�o foi poss�vel ler o cart�o. Tente novamente com a foto mais n�tida.',
+            result?.mensagem || 'Não foi possível ler o cartão. Tente novamente com a foto mais nítida.',
             result?.debug ?? null,
             qualityWarnings,
             result?.telemetry ?? null,
@@ -880,8 +883,8 @@ function CameraPage() {
       } else {
         offerManualEntry({
           tone: 'warning',
-          title: 'Leitura autom�tica indispon�vel',
-          message: 'O motor de leitura n�o carregou neste aparelho. Voc� ainda pode lan�ar a corre��o manualmente.',
+          title: 'Leitura automática indisponível',
+          message: 'O motor de leitura não carregou neste aparelho. Você ainda pode lançar a correção manualmente.',
         })
       }
     } catch (err: unknown) {
@@ -898,7 +901,7 @@ function CameraPage() {
     openResultReview(new Array(nq).fill(''), null, {
       notice: notice || {
         tone: 'info',
-        title: 'Corre��o manual',
+        title: 'Correção manual',
         message: 'Selecione o aluno e preencha as respostas abaixo para continuar.',
       },
     })
@@ -928,6 +931,10 @@ function CameraPage() {
     () => computeScore(currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva),
     [currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva]
   )
+  const correctedStudentsCount = useMemo(() => {
+    if (alunos.length === 0) return existingResults.size
+    return alunos.reduce((total, aluno) => total + (existingResults.has(aluno.id) ? 1 : 0), 0)
+  }, [alunos, existingResults])
 
   // ── Confirm result ──
   async function handleConfirm() {
@@ -1006,7 +1013,7 @@ function CameraPage() {
 
     // Update session tracking
     setSessao((prev) => [
-      ...prev,
+      ...prev.filter((entry) => entry.alunoId !== currentAlunoId),
       { alunoId: currentAlunoId, respostas: currentRespostas, acertos, percentual },
     ])
     setExistingResults((prev) => {
@@ -1079,7 +1086,7 @@ function CameraPage() {
       <div className="max-w-[600px] mx-auto px-3 pb-10">
         {/* Header */}
         <div className="text-center py-3">
-          <h1 className="text-lg font-bold text-indigo-400">ProvaScan Camera</h1>
+          <h1 className="text-lg font-bold text-indigo-400">ProvaScan Câmera</h1>
           <p className="text-xs text-slate-400">Sistema de Correção de Provas</p>
         </div>
 
@@ -1199,7 +1206,7 @@ function CameraPage() {
                         </span>
                       </div>
                       <div className="flex justify-between mt-1">
-                        <span className="text-slate-400">Questoes</span>
+                        <span className="text-slate-400">Questões</span>
                         <span className="text-slate-100 font-medium">
                           {sel.num_questoes} ({sel.num_alternativas} alternativas)
                         </span>
@@ -1252,7 +1259,7 @@ function CameraPage() {
               <div>
                 <span className="text-slate-400">Corrigidos: </span>
                 <span className="text-slate-100 font-semibold">
-                  {sessao.length + existingResults.size}
+                  {correctedStudentsCount}
                   {alunos.length > 0 ? ` de ${alunos.length}` : ''}
                 </span>
               </div>
@@ -1279,7 +1286,7 @@ function CameraPage() {
                       Plano B
                     </div>
                     <p className="mt-1 text-xs text-slate-400">
-                      Abra a camera ou galeria do aparelho se o scanner ao vivo nao estiver bom neste celular.
+                      Abra a câmera ou galeria do aparelho se o scanner ao vivo não estiver bom neste celular.
                     </p>
                   </div>
                 </>
@@ -1289,7 +1296,7 @@ function CameraPage() {
                     Captura recomendada
                   </div>
                   <p className="mt-1 text-xs text-slate-400">
-                    Use a camera do proprio celular, ative o flash se precisar e enquadre a folha inteira antes de confirmar a foto.
+                    Use a câmera do próprio celular, ative o flash se precisar e enquadre a folha inteira antes de confirmar a foto.
                   </p>
                 </div>
               )}
@@ -1316,7 +1323,7 @@ function CameraPage() {
                     </>
                   ) : (
                     <>
-                      <span>&#128248;</span> Abrir Camera do Aparelho
+                      <span>&#128248;</span> Abrir Câmera do Aparelho
                     </>
                   )}
                 </div>
@@ -1339,7 +1346,7 @@ function CameraPage() {
 
               {captureWarnings.length > 0 && (
                 <div className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-3 text-left text-xs text-amber-100">
-                  <div className="font-semibold text-sm">Dicas para a proxima foto</div>
+                  <div className="font-semibold text-sm">Dicas para a próxima foto</div>
                   <div className="mt-1">
                     {captureWarnings.slice(0, 4).join(' • ')}
                     {captureWarnings.length > 4 ? ` • +${captureWarnings.length - 4} outras` : ''}
@@ -1347,7 +1354,7 @@ function CameraPage() {
                 </div>
               )}
 
-              {captureDebug && (
+              {ENABLE_OMR_DIAGNOSTICS && captureDebug && (
                 <details className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-left">
                   <summary className="cursor-pointer text-sm font-medium text-slate-200">
                     Diagnóstico OMR
@@ -1360,7 +1367,7 @@ function CameraPage() {
                   />
                 </details>
               )}
-              {(captureTelemetry || captureQuality) && (
+              {ENABLE_OMR_DIAGNOSTICS && (captureTelemetry || captureQuality) && (
                 <div className="mt-3">
                   {renderDiagnosticDetails({ title: 'Telemetria OMR', showImage: false })}
                 </div>
@@ -1401,7 +1408,7 @@ function CameraPage() {
               </div>
             )}
 
-            {captureDebug && (
+            {ENABLE_OMR_DIAGNOSTICS && captureDebug && (
               <details className="mb-3 rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-left">
                 <summary className="cursor-pointer text-sm font-medium text-slate-200">
                   Diagnóstico OMR
@@ -1415,7 +1422,7 @@ function CameraPage() {
               </details>
             )}
 
-            {(captureTelemetry || captureQuality) && (
+            {ENABLE_OMR_DIAGNOSTICS && (captureTelemetry || captureQuality) && (
               <div className="mb-3">
                 {renderDiagnosticDetails({ title: 'Telemetria OMR', showImage: false })}
               </div>
