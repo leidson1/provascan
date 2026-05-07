@@ -76,6 +76,7 @@ interface WarpedAnalysisResult {
   debug?: { imageUrl: string; levels: DebugLevel[] }
   score: number
   telemetry: WarpAnalysisTelemetry
+  layoutTransform?: LayoutTransform | null
 }
 
 interface OrientationAnalysisResult {
@@ -462,6 +463,7 @@ export class OMREngine {
         respostas,
         debug,
         score: this._pontuarAnalise(qr, respostas, expectedProvaId) + structuralScore,
+        layoutTransform,
         telemetry: {
           analysisMs: this._now() - analysisStartedAt,
           qrMs,
@@ -534,22 +536,31 @@ export class OMREngine {
         }
       }
 
-      const melhorComDebug = this._analisarWarped(
-        orientacoes[melhorOrientacao].mat,
-        nq,
-        nalts,
-        letrasPerQ,
-        tiposQuestoes,
-        criterioDiscursiva,
-        expectedProvaId,
-        true
-      )
-      telemetry.analysisMs += melhorComDebug.telemetry.analysisMs
-      telemetry.qrMs += melhorComDebug.telemetry.qrMs
-      telemetry.bubbleMs += melhorComDebug.telemetry.bubbleMs
-      telemetry.debugMs += melhorComDebug.telemetry.debugMs
+      const debugStartedAt = this._now()
+      let debug: { imageUrl: string; levels: DebugLevel[] } | undefined
+      const bestGray = new cv.Mat()
+      try {
+        cv.cvtColor(orientacoes[melhorOrientacao].mat, bestGray, cv.COLOR_RGBA2GRAY)
+        debug = this._gerarDebugMista(
+          orientacoes[melhorOrientacao].mat,
+          bestGray,
+          nq,
+          nalts,
+          melhor?.respostas || [],
+          tiposQuestoes,
+          criterioDiscursiva,
+          melhor?.layoutTransform
+        )
+      } catch {
+        // debug falhou, mantemos a leitura calculada.
+      } finally {
+        bestGray.delete()
+        telemetry.debugMs += this._now() - debugStartedAt
+      }
+
       melhorFinal = {
-        ...melhorComDebug,
+        ...melhor!,
+        debug,
         telemetry,
       }
     } finally {
@@ -1943,9 +1954,9 @@ export class OMREngine {
       0.12
     )
     const hasStrongMark = maxNivel >= Math.max(
-      OMREngine.MIN_FILL * 0.75,
-      baseline + 0.05,
-      0.12
+      OMREngine.MIN_FILL * 0.62,
+      baseline + 0.035,
+      0.1
     )
 
     const resposta: OMRResposta = {
@@ -1956,7 +1967,7 @@ export class OMREngine {
       status: 'vazia',
     }
 
-    if (!hasStrongMark || contrasteAbs < 0.045 || contrasteRel < 1.35) {
+    if (!hasStrongMark || contrasteAbs < 0.032 || contrasteRel < 1.22) {
       return resposta
     }
 
