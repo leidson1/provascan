@@ -326,7 +326,7 @@ export class OMREngine {
       if (marcadores) {
         const marcadoresOrientados = this._alinharOrientacao(src, marcadores, 'markers')
         const warpedMarcadores = this._corrigirPerspectiva(src, marcadoresOrientados)
-        candidatosWarp.push({ mat: warpedMarcadores, source: 'markers' })
+        candidatosWarp.unshift({ mat: warpedMarcadores, source: 'markers' })
         allMats.push(warpedMarcadores)
       }
       telemetry.candidateCount = candidatosWarp.length
@@ -343,9 +343,11 @@ export class OMREngine {
           criterioDiscursiva,
           expectedProvaId
         )
-        if (!analise || tentativa.score > analise.score) {
+        const scoreComOrigem = tentativa.score + (candidatoWarp.source === 'markers' ? 350 : 0)
+        if (!analise || scoreComOrigem > analise.score) {
           analise = {
             ...tentativa,
+            score: scoreComOrigem,
             telemetry: {
               ...tentativa.telemetry,
               selectedSource: candidatoWarp.source,
@@ -353,9 +355,14 @@ export class OMREngine {
           }
         }
 
-        if (deviceTier === 'low' && this._atingiuScoreConfiavel(tentativa, nq, expectedProvaId)) {
+        const podePararCedo =
+          this._atingiuScoreConfiavel(tentativa, nq, expectedProvaId) &&
+          (deviceTier === 'low' || candidatoWarp.source === 'markers')
+
+        if (podePararCedo) {
           analise = {
             ...tentativa,
+            score: scoreComOrigem,
             telemetry: {
               ...tentativa.telemetry,
               selectedSource: candidatoWarp.source,
@@ -1260,6 +1267,10 @@ export class OMREngine {
 
   private _selecionar4Melhores(cands: Ponto[], imgW: number, imgH: number): Ponto[] | null {
     const targetRatio = CARTAO.largura / CARTAO.altura
+    const markerCenterW = CARTAO.largura - 2 * CARTAO.margem - CARTAO.marcador
+    const markerCenterH = CARTAO.altura - 2 * CARTAO.margem - CARTAO.marcador
+    const expectedWidthUnits = markerCenterW / CARTAO.marcador
+    const expectedHeightUnits = markerCenterH / CARTAO.marcador
     let best: Ponto[] | null = null
     let bestScore = Infinity
     const imgArea = imgW * imgH
@@ -1286,6 +1297,39 @@ export class OMREngine {
             if (avgH === 0) continue
             if (avgW < imgW * 0.3 || avgH < imgH * 0.3) continue
 
+            const markerSide = pts.reduce((sum, ponto) => {
+              const w = ponto.w || 0
+              const h = ponto.h || 0
+              return sum + Math.max(1, (w + h) / 2)
+            }, 0) / pts.length
+            const widthUnits = avgW / markerSide
+            const heightUnits = avgH / markerSide
+
+            // Fotos da folha inteira podem conter dois cartoes; esse filtro evita
+            // escolher marcadores de cartoes diferentes so porque formam o maior retangulo.
+            const fitsDirect =
+              widthUnits >= expectedWidthUnits * 0.55 &&
+              widthUnits <= expectedWidthUnits * 1.75 &&
+              heightUnits >= expectedHeightUnits * 0.55 &&
+              heightUnits <= expectedHeightUnits * 1.65
+            const fitsRotated =
+              widthUnits >= expectedHeightUnits * 0.55 &&
+              widthUnits <= expectedHeightUnits * 1.75 &&
+              heightUnits >= expectedWidthUnits * 0.55 &&
+              heightUnits <= expectedWidthUnits * 1.65
+            if (!fitsDirect && !fitsRotated) continue
+
+            const directUnitPenalty =
+              Math.abs(widthUnits - expectedWidthUnits) / expectedWidthUnits +
+              Math.abs(heightUnits - expectedHeightUnits) / expectedHeightUnits
+            const rotatedUnitPenalty =
+              Math.abs(widthUnits - expectedHeightUnits) / expectedHeightUnits +
+              Math.abs(heightUnits - expectedWidthUnits) / expectedWidthUnits
+            const useRotatedUnits = rotatedUnitPenalty < directUnitPenalty
+            const unitPenalty = Math.min(directUnitPenalty, rotatedUnitPenalty)
+            const expectedWForPenalty = useRotatedUnits ? expectedHeightUnits : expectedWidthUnits
+            const expectedHForPenalty = useRotatedUnits ? expectedWidthUnits : expectedHeightUnits
+
             const ratio = avgW / avgH
             const normalizedRatio = Math.max(ratio, 1 / Math.max(ratio, 0.001))
             const quadArea = this._calcularAreaQuadrilatero(ord)
@@ -1295,6 +1339,9 @@ export class OMREngine {
             let score = Math.abs(normalizedRatio - targetRatio)
             score += Math.abs(w1 - w2) / Math.max(w1, w2)
             score += Math.abs(h1 - h2) / Math.max(h1, h2)
+            score += unitPenalty * 1.8
+            score += Math.max(0, heightUnits / expectedHForPenalty - 1.25) * 6
+            score += Math.max(0, widthUnits / expectedWForPenalty - 1.35) * 3
 
             const areas = [
               cands[a].area || 0,
@@ -1312,8 +1359,9 @@ export class OMREngine {
               Math.hypot(ord.bl.x, imgH - ord.bl.y) +
               Math.hypot(imgW - ord.br.x, imgH - ord.br.y)
             ) / (imgDiag * 4)
-            score += cornerPenalty * 1.4
-            score -= relQuadArea * 0.75
+            score += cornerPenalty * 0.35
+            score += Math.max(0, relQuadArea - 0.72) * 2.5
+            score -= Math.min(relQuadArea, 0.45) * 0.2
 
             if (score < bestScore) {
               bestScore = score
