@@ -5,7 +5,7 @@
 
 import jsPDF from 'jspdf'
 import qrcode from 'qrcode-generator'
-import { CARTAO, calcLinhaAltura } from '@/lib/omr/card-layout'
+import { CARTAO, calcBolhaRaioVisual, calcGridGeometry } from '@/lib/omr/card-layout'
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -40,6 +40,35 @@ export interface CardGenParams {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '\u2014'
   return new Date(dateStr).toLocaleDateString('pt-BR')
+}
+
+function drawFittedText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  fontSize: number,
+  minFontSize = 6
+): void {
+  let size = fontSize
+  doc.setFontSize(size)
+
+  while (size > minFontSize && doc.getTextWidth(text) > maxWidth) {
+    size -= 0.5
+    doc.setFontSize(size)
+  }
+
+  if (doc.getTextWidth(text) <= maxWidth) {
+    doc.text(text, x, y)
+    return
+  }
+
+  let fitted = text
+  while (fitted.length > 3 && doc.getTextWidth(`${fitted}...`) > maxWidth) {
+    fitted = fitted.slice(0, -1)
+  }
+  doc.text(`${fitted}...`, x, y)
 }
 
 // ── QR Code Drawing ────────────────────────────────────────
@@ -249,59 +278,76 @@ function desenharCartao(
   const qrData = `${prova.id}:${aluno.id}`
   desenharQR(doc, qrData, C.qrX, yOff + C.qrY, C.qrTamanho)
 
-  // Legenda abaixo do QR
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6)
-  doc.setTextColor(180)
-  doc.text('ID: ' + qrData, C.qrX, yOff + C.qrY + C.qrTamanho + 3)
-
   // ── 3. Título e info da prova ──
   doc.setTextColor(50)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(nomeInstituicao ? 11 : 13)
-  doc.text((nomeInstituicao || 'PROVASCAN').toUpperCase(), C.tituloX, yOff + C.tituloY + 2)
+  drawFittedText(
+    doc,
+    (nomeInstituicao || 'PROVASCAN').toUpperCase(),
+    C.tituloX,
+    yOff + C.tituloY + 1.5,
+    C.largura - C.tituloX - C.margem - 6,
+    nomeInstituicao ? 10 : 12,
+    7
+  )
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
   doc.setTextColor(80)
-  doc.text(`${prova.disciplina}  |  ${prova.turma}  |  ${prova.bloco}`, C.tituloX, yOff + C.tituloY + 8)
-  doc.text(`${formatDate(prova.data)}  |  ${nq} questões  |  ${nalts} alternativas`, C.tituloX, yOff + C.tituloY + 13)
+  drawFittedText(
+    doc,
+    `${prova.disciplina}  |  ${prova.turma}  |  ${prova.bloco}`,
+    C.tituloX,
+    yOff + C.tituloY + 7,
+    C.largura - C.tituloX - C.margem - 6,
+    7.5,
+    5.5
+  )
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(80)
+  drawFittedText(
+    doc,
+    `${formatDate(prova.data)}  |  ${nq} questões  |  ${nalts} alternativas`,
+    C.tituloX,
+    yOff + C.tituloY + 11.5,
+    C.largura - C.tituloX - C.margem - 6,
+    7,
+    5.5
+  )
 
   // ── 4. Dados do aluno ──
   const isReserva = String(aluno.id).charAt(0) === 'R'
   doc.setDrawColor(180)
   doc.setLineWidth(0.3)
   doc.setFillColor(255, 255, 255)
-  doc.roundedRect(C.margem + 2, yOff + C.alunoY - 5, C.largura - C.margem * 2 - 4, 13, 2, 2, 'FD')
+  doc.roundedRect(C.margem + 2, yOff + C.alunoY - 4.5, C.largura - C.margem * 2 - 4, 10.5, 2, 2, 'FD')
 
   if (isReserva) {
     // Cartão reserva: badge + linha para escrever nome
     doc.setFillColor(239, 68, 68)
-    doc.roundedRect(C.margem + 4, yOff + C.alunoY - 3.5, 24, 8, 1.5, 1.5, 'F')
+    doc.roundedRect(C.margem + 4, yOff + C.alunoY - 3, 22, 7, 1.5, 1.5, 'F')
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7)
-    doc.text('RESERVA', C.margem + 6, yOff + C.alunoY + 2)
+    doc.text('RESERVA', C.margem + 6, yOff + C.alunoY + 1.7)
     // Linha pontilhada para nome
     doc.setDrawColor(150)
     doc.setLineWidth(0.3)
     const lineStart = C.margem + 32
     const lineEnd = C.largura - C.margem - 6
     for (let lx = lineStart; lx < lineEnd; lx += 3) {
-      doc.line(lx, yOff + C.alunoY + 3, lx + 1.5, yOff + C.alunoY + 3)
+      doc.line(lx, yOff + C.alunoY + 2.6, lx + 1.5, yOff + C.alunoY + 2.6)
     }
     doc.setTextColor(150)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
-    doc.text('Nome:', C.margem + 31, yOff + C.alunoY - 0.5)
+    doc.text('Nome:', C.margem + 31, yOff + C.alunoY - 0.7)
   } else {
     doc.setTextColor(0)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(12)
-    doc.text(aluno.nome, C.margem + 6, yOff + C.alunoY + 1)
+    drawFittedText(doc, aluno.nome, C.margem + 6, yOff + C.alunoY + 1, C.largura - C.margem * 2 - 46, 9.5, 6.5)
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
+    doc.setFontSize(8)
     doc.setTextColor(80)
     doc.text(`N\u00BA ${aluno.numero || '-'}`, C.largura - C.margem - 20, yOff + C.alunoY + 1)
   }
@@ -317,28 +363,16 @@ function desenharCartao(
     3: ['C', 'P', 'E'],
     4: ['E', 'B', 'P', 'I'],
   }
-  const criterioValores: Record<number, number[]> = {
-    2: [1.0, 0],
-    3: [1.0, 0.5, 0],
-    4: [1.0, 0.75, 0.5, 0],
-  }
-
-  const splitAt = nq > 10 ? Math.ceil(nq / 2) : nq
-  const numCols = nq > 10 ? 2 : 1
-  const blocoW = C.numLargura + nalts * C.colunaLargura
-  const gapEntreCol = 10
-
-  // Escalonamento dinâmico: reduzir tamanhos quando há muitas questões
-  const linhaAltura = calcLinhaAltura(nq)
-  const escala = linhaAltura / C.linhaAltura // fator de escala (1.0 = normal, <1 = compacto)
-  const bolhaRaio = C.bolhaRaio * Math.max(escala, 0.7) // bolha reduz mas não menos que 70%
-
-  let gradeXStart: number
-  if (numCols === 1) {
-    gradeXStart = (C.largura - blocoW) / 2
-  } else {
-    gradeXStart = (C.largura - (blocoW * 2 + gapEntreCol)) / 2
-  }
+  const {
+    splitAt,
+    numCols,
+    blocoW,
+    gapEntreCol,
+    linhaAltura,
+    gradeXStart,
+  } = calcGridGeometry(nq, nalts)
+  const escala = linhaAltura / C.linhaAltura
+  const bolhaRaio = calcBolhaRaioVisual(nq, nalts)
 
   for (let col = 0; col < numCols; col++) {
     const startQ = col * splitAt
@@ -349,28 +383,27 @@ function desenharCartao(
     // Fundo branco puro da área da grade
     const gridH = (endQ - startQ) * linhaAltura
     doc.setFillColor(255, 255, 255)
-    doc.rect(baseX, baseY - 6, blocoW, gridH + 6, 'F')
+    doc.rect(baseX, baseY - 5, blocoW, gridH + 5, 'F')
 
     // Cabeçalho: letras das alternativas
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7)
+    doc.setFontSize(6.2)
     doc.setTextColor(160)
-    doc.text('Q', baseX + 3, baseY - 1.5)
+    doc.text('Q', baseX + 1.2, baseY - 1.4)
     for (let a = 0; a < nalts; a++) {
       const lx = baseX + C.numLargura + a * C.colunaLargura + C.colunaLargura / 2
-      doc.text(letras[a], lx - 1.2, baseY - 1.5)
+      doc.text(letras[a], lx, baseY - 1.4, { align: 'center' })
     }
 
     // Linha separando cabeçalho
-    doc.setDrawColor(200)
+    doc.setDrawColor(215)
     doc.setLineWidth(0.15)
     doc.line(baseX, baseY, baseX + blocoW, baseY)
 
     // Tamanhos de fonte escalados
-    const fontNumero = Math.max(5, 7 * escala)
+    const fontNumero = Math.max(4.2, 6 * escala)
     const fontPeso = Math.max(3.5, 4.5 * escala)
-    const fontLetra = Math.max(4, 5.5 * escala)
-    const fontValor = Math.max(3, 4 * escala)
+    const mostrarPesos = linhaAltura >= 5.2
 
     // Linhas de questões
     for (let q = startQ; q < endQ; q++) {
@@ -386,7 +419,7 @@ function desenharCartao(
       doc.setFontSize(fontNumero)
       doc.setTextColor(isDiscursiva ? 59 : 140, isDiscursiva ? 130 : 140, isDiscursiva ? 246 : 140)
       doc.text(qNum, baseX + 1.5, rowY + linhaAltura / 2 + 1)
-      if (pesoStr) {
+      if (pesoStr && mostrarPesos) {
         doc.setFontSize(fontPeso)
         doc.setTextColor(170)
         doc.text(pesoStr, baseX + 7, rowY + linhaAltura / 2 + 1)
@@ -395,7 +428,6 @@ function desenharCartao(
       if (isDiscursiva) {
         // Bolhas de critério discursivo (azuis, centralizadas)
         const critLetras = criterioLetras[criterio] || criterioLetras[3]
-        const critValores = criterioValores[criterio] || criterioValores[3]
         const numBolhas = critLetras.length
         const totalBolhasWidth = numBolhas * C.colunaLargura
         const availableWidth = nalts * C.colunaLargura
@@ -407,25 +439,16 @@ function desenharCartao(
 
           // Bolha: borda azul, fundo branco
           doc.setDrawColor(59, 130, 246)
-          doc.setLineWidth(0.5)
+          doc.setLineWidth(0.42)
           doc.setFillColor(255, 255, 255)
           doc.circle(bcx, bcy, bolhaRaio, 'FD')
 
-          // Letra de critério dentro da bolha (centralizada)
-          doc.setFont('helvetica', 'normal')
-          doc.setFontSize(fontLetra)
-          doc.setTextColor(147, 197, 253)
-          const letraW = doc.getTextWidth(critLetras[a])
-          doc.text(critLetras[a], bcx - letraW / 2, bcy + fontLetra * 0.18)
-
-          // Valor real abaixo da bolha (valor do critério × peso da questão)
-          const pesoQ = pesos[q] || 1
-          const valorReal = critValores[a] * pesoQ
-          const valorStr = valorReal % 1 === 0 ? valorReal.toFixed(0) : valorReal.toFixed(1)
-          doc.setFontSize(fontValor)
-          doc.setTextColor(147, 197, 253)
-          const valorW = doc.getTextWidth(valorStr)
-          doc.text(valorStr, bcx - valorW / 2, bcy + bolhaRaio + 2 * escala + 1)
+          if (linhaAltura >= 5.2) {
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(3.8)
+            doc.setTextColor(120, 170, 240)
+            doc.text(critLetras[a], bcx, bcy + bolhaRaio + 2.2, { align: 'center' })
+          }
         }
       } else {
         // Bolhas objetivas normais (A/B/C/D/E)
@@ -435,24 +458,17 @@ function desenharCartao(
 
           // Bolha: borda preta, fundo branco
           doc.setDrawColor(0)
-          doc.setLineWidth(0.5)
+          doc.setLineWidth(0.42)
           doc.setFillColor(255, 255, 255)
           doc.circle(bcx, bcy, bolhaRaio, 'FD')
-
-          // Letra guia dentro da bolha (centralizada)
-          doc.setFont('helvetica', 'normal')
-          doc.setFontSize(fontLetra)
-          doc.setTextColor(210)
-          const letraW = doc.getTextWidth(letras[a])
-          doc.text(letras[a], bcx - letraW / 2, bcy + fontLetra * 0.18)
         }
       }
     }
 
     // Borda da grade
-    doc.setDrawColor(200)
-    doc.setLineWidth(0.2)
-    doc.rect(baseX, baseY - 6, blocoW, gridH + 6, 'S')
+    doc.setDrawColor(215)
+    doc.setLineWidth(0.15)
+    doc.rect(baseX, baseY - 5, blocoW, gridH + 5, 'S')
   }
 
   // ── 6. Instruções ──

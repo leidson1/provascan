@@ -189,9 +189,9 @@ export default function NovaProvaPage() {
                 id="numQuestoes"
                 type="number"
                 min={1}
-                max={50}
+                max={60}
                 value={numQuestoes}
-                onChange={(e) => setNumQuestoes(Number(e.target.value))}
+                onChange={(e) => setNumQuestoes(Math.min(60, Math.max(1, Number(e.target.value) || 1)))}
               />
             </div>
 

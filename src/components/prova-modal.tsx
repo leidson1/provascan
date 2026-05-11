@@ -217,7 +217,7 @@ function ProvaModalInner({
   }
 
   function handleNumQuestoesChange(nextNumQuestoes: number) {
-    const safeNumQuestoes = Math.max(1, nextNumQuestoes || 1)
+    const safeNumQuestoes = Math.min(60, Math.max(1, nextNumQuestoes || 1))
     setNumQuestoes(safeNumQuestoes)
     setTiposQuestoes((prev) => syncTiposQuestoes(tipoProva, safeNumQuestoes, prev))
   }
@@ -427,7 +427,7 @@ function ProvaModalInner({
                   className="h-9"
                   type="number"
                   min={1}
-                  max={50}
+                  max={60}
                   value={numQuestoes}
                   onChange={(event) => handleNumQuestoesChange(Number(event.target.value))}
                 />

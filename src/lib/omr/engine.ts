@@ -5,7 +5,13 @@
  * Abordagem progressiva: tenta rápido primeiro, escala se falhar
  */
 
-import { CARTAO, calcPosicoesBolhas, calcPosicoesBolhasMista, type BubblePosition } from './card-layout'
+import {
+  CARTAO,
+  calcBolhaRaioVisual,
+  calcPosicoesBolhas,
+  calcPosicoesBolhasMista,
+  type BubblePosition,
+} from './card-layout'
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -852,6 +858,11 @@ export class OMREngine {
     )
   }
 
+  private _raioAmostraBolhas(nq: number, nalts: number, fator: number): number {
+    const raioVisualPx = calcBolhaRaioVisual(nq, nalts) * OMREngine.PX_MM
+    return Math.max(2, Math.round(raioVisualPx * fator))
+  }
+
   private _transformarPontoLayout(layoutTransform: LayoutTransform, x: number, y: number): Ponto {
     const h = layoutTransform.matrix
     const denom = h[6] * x + h[7] * y + h[8]
@@ -1414,7 +1425,13 @@ export class OMREngine {
       cv.threshold(testGray, testBin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
 
       const px = OMREngine.PX_MM
-      const qrRegion = { x: Math.round(10 * px), y: Math.round(20 * px), w: Math.round(26 * px), h: Math.round(26 * px) }
+      const qrPadding = 4
+      const qrRegion = {
+        x: Math.round((CARTAO.qrX - qrPadding) * px),
+        y: Math.round((CARTAO.qrY - qrPadding) * px),
+        w: Math.round((CARTAO.qrTamanho + qrPadding * 2) * px),
+        h: Math.round((CARTAO.qrTamanho + qrPadding * 2) * px),
+      }
       const rx = Math.max(0, qrRegion.x)
       const ry = Math.max(0, qrRegion.y)
       const rw = Math.min(qrRegion.w, testBin.cols - rx)
@@ -1808,10 +1825,9 @@ export class OMREngine {
     criterioDiscursiva?: number,
     layoutTransform?: LayoutTransform | null
   ): OMRResposta[] {
-    const px = OMREngine.PX_MM
     const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
     const pontosAmostra = this._mapearPosicoesBolhas(posicoes, layoutTransform)
-    const raio = Math.round(CARTAO.bolhaRaio * px * 0.75)
+    const raio = this._raioAmostraBolhas(nq, nalts, 0.75)
 
     const preparedGray = this._prepararCinzaBolhas(wGray)
     const inkGray = this._realcarMarcasBolhas(preparedGray)
@@ -1996,10 +2012,9 @@ export class OMREngine {
     criterioDiscursiva?: number,
     layoutTransform?: LayoutTransform | null
   ): { imageUrl: string; levels: DebugLevel[] } {
-    const px = OMREngine.PX_MM
     const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
     const pontosAmostra = this._mapearPosicoesBolhas(posicoes, layoutTransform)
-    const raio = Math.round(CARTAO.bolhaRaio * px * 1.1)
+    const raio = this._raioAmostraBolhas(nq, nalts, 1.1)
 
     const debug = warped.clone()
 
@@ -2063,10 +2078,9 @@ export class OMREngine {
   // ── LEITURA DE BOLHAS (legado) ──────────────────────────────
 
   private _lerBolhas(wGray: any, nq: number, nalts: number, letras: string[]): OMRResposta[] {
-    const px = OMREngine.PX_MM
     const posicoes = calcPosicoesBolhas(nq, nalts)
     // Raio menor (0.75x) para amostrar o CENTRO da bolha, evitando a borda preta
-    const raio = Math.round(CARTAO.bolhaRaio * px * 0.75)
+    const raio = this._raioAmostraBolhas(nq, nalts, 0.75)
 
     // Leitura principal: adaptive gaussian
     const wBin1 = new cv.Mat()
@@ -2245,7 +2259,7 @@ export class OMREngine {
   ): { imageUrl: string; levels: DebugLevel[] } {
     const px = OMREngine.PX_MM
     const posicoes = calcPosicoesBolhas(nq, nalts)
-    const raio = Math.round(CARTAO.bolhaRaio * px * 1.1)
+    const raio = this._raioAmostraBolhas(nq, nalts, 1.1)
     const allLetras = ['A', 'B', 'C', 'D', 'E']
 
     // Criar cópia colorida para anotar
