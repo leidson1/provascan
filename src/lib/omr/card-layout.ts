@@ -10,9 +10,15 @@ export const CARTAO = {
   marcador: 7.5,
 
   // QR Code do aluno.
-  qrTamanho: 22,
+  qrTamanho: 24,
   qrX: 18,
   qrY: 18,
+
+  // Barra tecnica de orientacao: ajuda o OMR a escolher o lado correto rapido.
+  orientadorX: 102,
+  orientadorY: 34,
+  orientadorW: 16,
+  orientadorH: 2,
 
   // Cabeçalho compacto.
   tituloX: 48,

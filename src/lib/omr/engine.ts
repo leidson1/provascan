@@ -81,6 +81,7 @@ interface WarpedAnalysisResult {
   respostas: OMRResposta[]
   debug?: { imageUrl: string; levels: DebugLevel[] }
   score: number
+  orientationScore: number
   telemetry: WarpAnalysisTelemetry
   layoutTransform?: LayoutTransform | null
 }
@@ -430,6 +431,7 @@ export class OMREngine {
       const bubbleStartedAt = this._now()
       cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
       const layoutTransform = this._estimarTransformacaoLayout(wGray)
+      const orientationScore = this._pontuarOrientador(wGray)
       const respostas = this._lerBolhasMista(
         wGray,
         nq,
@@ -468,7 +470,8 @@ export class OMREngine {
         qr,
         respostas,
         debug,
-        score: this._pontuarAnalise(qr, respostas, expectedProvaId) + structuralScore,
+        score: this._pontuarAnalise(qr, respostas, expectedProvaId) + structuralScore + orientationScore,
+        orientationScore,
         layoutTransform,
         telemetry: {
           analysisMs: this._now() - analysisStartedAt,
@@ -585,19 +588,33 @@ export class OMREngine {
       qr: ParsedQRData
       respostas: OMRResposta[]
       score: number
+      orientationScore?: number
     },
     nq: number,
     expectedProvaId?: number
   ): boolean {
-    if (!analise.qr) return false
-    if (expectedProvaId != null && analise.qr.provaId !== expectedProvaId) return false
-
     let ok = 0
     let ambiguas = 0
+    let vazias = 0
+    let confiancaTotal = 0
     for (const resposta of analise.respostas) {
-      if (resposta.status === 'ok') ok++
-      else if (resposta.status === 'ambigua') ambiguas++
+      confiancaTotal += resposta.confianca
+      if (resposta.status === 'ok') {
+        ok++
+      } else if (resposta.status === 'ambigua') {
+        ambiguas++
+      } else {
+        vazias++
+      }
     }
+
+    if (!analise.qr) {
+      const todasRespondidas = analise.respostas.length >= nq && ok >= nq && ambiguas === 0 && vazias === 0
+      const confiancaMedia = analise.respostas.length > 0 ? confiancaTotal / analise.respostas.length : 0
+      return todasRespondidas && (analise.orientationScore || 0) >= 180 && confiancaMedia >= 0.35
+    }
+
+    if (expectedProvaId != null && analise.qr.provaId !== expectedProvaId) return false
 
     return ok >= Math.max(1, Math.floor(nq * 0.8)) && ambiguas === 0
   }
@@ -686,6 +703,27 @@ export class OMREngine {
       return qrScore + gridScore
     } finally {
       normalized.delete()
+      bin.delete()
+    }
+  }
+
+  private _pontuarOrientador(wGray: any): number {
+    const px = OMREngine.PX_MM
+    const rect = new cv.Rect(
+      Math.max(0, Math.round(CARTAO.orientadorX * px)),
+      Math.max(0, Math.round(CARTAO.orientadorY * px)),
+      Math.max(1, Math.round(CARTAO.orientadorW * px)),
+      Math.max(1, Math.round(CARTAO.orientadorH * px))
+    )
+
+    const bin = new cv.Mat()
+
+    try {
+      cv.threshold(wGray, bin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+      const density = this._densidadeRegiao(bin, rect)
+      if (density < 0.35) return 0
+      return Math.min(420, density * 420)
+    } finally {
       bin.delete()
     }
   }

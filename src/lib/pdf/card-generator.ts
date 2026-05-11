@@ -275,6 +275,19 @@ function desenharCartao(
   doc.rect(C.largura - C.margem - C.marcador, yOff + C.altura - C.margem - C.marcador, C.marcador, C.marcador, 'F')
 
   // ── 2. QR Code ──
+  // Orientador tecnico: pequeno e assimetrico para acelerar a escolha de orientacao.
+  const orientadorB = 1
+  doc.setFillColor(255, 255, 255)
+  doc.rect(
+    C.orientadorX - orientadorB,
+    yOff + C.orientadorY - orientadorB,
+    C.orientadorW + orientadorB * 2,
+    C.orientadorH + orientadorB * 2,
+    'F'
+  )
+  doc.setFillColor(0, 0, 0)
+  doc.rect(C.orientadorX, yOff + C.orientadorY, C.orientadorW, C.orientadorH, 'F')
+
   const qrData = `${prova.id}:${aluno.id}`
   desenharQR(doc, qrData, C.qrX, yOff + C.qrY, C.qrTamanho)
 
