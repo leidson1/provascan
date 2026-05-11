@@ -47,7 +47,8 @@ const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const ENABLE_LIVE_SCANNER = false
 // Diagnóstico e telemetria seguem disponíveis para desenvolvimento/admin,
 // mas ficam ocultos para os usuários até criarmos uma área própria de testes.
-const ENABLE_OMR_DIAGNOSTICS = true
+const ENABLE_OMR_DIAGNOSTICS = false
+const SHOW_CAMERA_MAINTENANCE_NOTICE = true
 
 function detectDeviceTier(): DeviceTier {
   if (typeof navigator === 'undefined') return 'balanced'
@@ -1095,6 +1096,22 @@ function CameraPage() {
           <div className="flex items-center justify-center gap-2 text-xs text-indigo-300 mb-2">
             <div className="animate-spin h-3 w-3 border border-indigo-400 border-t-transparent rounded-full" />
             Carregando motor OMR...
+          </div>
+        )}
+
+        {SHOW_CAMERA_MAINTENANCE_NOTICE && (
+          <div className="mb-3 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4 text-left shadow-lg shadow-emerald-950/20">
+            <div className="text-sm font-bold uppercase tracking-wide text-emerald-200">
+              Atualização importante
+            </div>
+            <p className="mt-2 text-base font-semibold leading-snug text-white">
+              Fizemos melhorias significativas na leitura dos cartões.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-emerald-50/90">
+              Teste normalmente a correção pela câmera. Se notar qualquer erro,
+              tire uma foto ou print da tela e entre em contato com o administrador
+              do seu workspace ou com o suporte da escola.
+            </p>
           </div>
         )}
 

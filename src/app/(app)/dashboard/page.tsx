@@ -352,6 +352,7 @@ export default function DashboardPage() {
             <div className="flex-1">
               <h3 className="font-semibold text-emerald-900 text-sm">Novidades do ProvaScan</h3>
               <ul className="mt-1 text-xs text-emerald-800 space-y-0.5 list-disc list-inside">
+                <li>Manutenção importante: melhoramos a leitura dos cartões pela câmera. Teste normalmente e avise o administrador se encontrar qualquer erro.</li>
                 <li>Recuperação automática para alunos abaixo da média — com seleção manual</li>
                 <li>2ª chamada para alunos ausentes</li>
                 <li>Selecione várias turmas ao criar uma prova</li>
