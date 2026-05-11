@@ -1871,7 +1871,7 @@ export class OMREngine {
     const inkGray = this._realcarMarcasBolhas(preparedGray)
     try {
       const wBin1 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 15, 8)
-      const leitura1 = this._lerBolhasUmaVezMista(wBin1, inkGray, pontosAmostra, nq, raio)
+      const leitura1 = this._lerBolhasUmaVezMista(wBin1, inkGray, preparedGray, pontosAmostra, nq, raio)
       wBin1.delete()
 
       let precisaFallback = false
@@ -1891,7 +1891,7 @@ export class OMREngine {
       }
 
       const wBin2 = this._criarMascaraBolhas(inkGray, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 17, 6)
-      const leitura2 = this._lerBolhasUmaVezMista(wBin2, inkGray, pontosAmostra, nq, raio)
+      const leitura2 = this._lerBolhasUmaVezMista(wBin2, inkGray, preparedGray, pontosAmostra, nq, raio)
       wBin2.delete()
 
       const combinado = this._combinarLeiturasBolhas([leitura1, leitura2], nq)
@@ -1904,7 +1904,7 @@ export class OMREngine {
 
       if (ambiguas > nq * 0.3) {
         const wBin3 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_MEAN_C, 27, 5)
-        const leitura3 = this._lerBolhasUmaVezMista(wBin3, inkGray, pontosAmostra, nq, raio)
+        const leitura3 = this._lerBolhasUmaVezMista(wBin3, inkGray, preparedGray, pontosAmostra, nq, raio)
         wBin3.delete()
 
         const triplo = this._combinarLeiturasBolhas([leitura1, leitura2, leitura3], nq)
@@ -1921,6 +1921,7 @@ export class OMREngine {
   private _lerBolhasUmaVezMista(
     matBin: any,
     inkGray: any,
+    paperGray: any,
     pontosAmostra: Ponto[][],
     nq: number,
     raio: number
@@ -1932,7 +1933,7 @@ export class OMREngine {
       for (let a = 0; a < numBolhas; a++) {
         const cx = Math.round(pontosAmostra[q][a].x)
         const cy = Math.round(pontosAmostra[q][a].y)
-        niveis.push(this._nivelBolhaHibrido(matBin, inkGray, cx, cy, raio))
+        niveis.push(this._nivelBolhaHibrido(matBin, inkGray, paperGray, cx, cy, raio))
       }
       resultados.push(niveis)
     }
@@ -2491,10 +2492,82 @@ export class OMREngine {
     }
   }
 
-  private _nivelBolhaHibrido(matBin: any, matGray: any, cx: number, cy: number, raio: number): number {
+  private _nivelBolhaContrasteCentro(matGray: any, cx: number, cy: number, raio: number): number {
+    const r = Math.max(2, Math.round(raio * 1.45))
+    let x = cx - r
+    let y = cy - r
+    let w = r * 2
+    let h = r * 2
+
+    if (x < 0) { w += x; x = 0 }
+    if (y < 0) { h += y; y = 0 }
+    if (x + w > matGray.cols) w = matGray.cols - x
+    if (y + h > matGray.rows) h = matGray.rows - y
+    if (w <= 0 || h <= 0) return 0
+
+    let roi: any = null
+    try {
+      roi = matGray.roi(new cv.Rect(x, y, w, h))
+      const centerX = cx - x
+      const centerY = cy - y
+      const centerRadius = Math.max(2, raio * 0.48)
+      const ringInnerRadius = Math.max(centerRadius + 1, raio * 0.72)
+      const ringOuterRadius = Math.max(ringInnerRadius + 1, raio * 1.08)
+      const paperInnerRadius = Math.max(ringOuterRadius + 1, raio * 1.16)
+      const paperOuterRadius = Math.max(paperInnerRadius + 1, raio * 1.42)
+
+      let centerCount = 0
+      let centerTotal = 0
+      let ringCount = 0
+      let ringTotal = 0
+      let paperCount = 0
+      let paperTotal = 0
+
+      for (let yy = 0; yy < roi.rows; yy++) {
+        for (let xx = 0; xx < roi.cols; xx++) {
+          const dx = xx + 0.5 - centerX
+          const dy = yy + 0.5 - centerY
+          const distance = Math.hypot(dx, dy)
+          const value = roi.ucharPtr(yy, xx)[0]
+
+          if (distance <= centerRadius) {
+            centerCount++
+            centerTotal += value
+          } else if (distance >= ringInnerRadius && distance <= ringOuterRadius) {
+            ringCount++
+            ringTotal += value
+          } else if (distance >= paperInnerRadius && distance <= paperOuterRadius) {
+            paperCount++
+            paperTotal += value
+          }
+        }
+      }
+
+      if (centerCount === 0) return 0
+
+      const centerMean = centerTotal / centerCount
+      const ringMean = ringCount > 0 ? ringTotal / ringCount : centerMean
+      const paperMean = paperCount > 0 ? paperTotal / paperCount : Math.max(centerMean, ringMean)
+      const localPaper = Math.max(ringMean, paperMean)
+      const darkAgainstPaper = Math.max(0, (localPaper - centerMean) / 255)
+      const darkAgainstRing = Math.max(0, (ringMean - centerMean) / 255)
+
+      return Math.max(
+        0,
+        Math.min(1, darkAgainstPaper * 2.7 + darkAgainstRing * 1.15)
+      )
+    } finally {
+      if (roi) roi.delete()
+    }
+  }
+
+  private _nivelBolhaHibrido(matBin: any, matGray: any, paperGray: any, cx: number, cy: number, raio: number): number {
     const binaryScore = this._nivelBolha(matBin, cx, cy, raio)
     const grayScore = this._nivelBolhaCinza(matGray, cx, cy, raio)
-    const combined = binaryScore * 0.45 + grayScore * 0.55 + Math.max(0, grayScore - binaryScore) * 0.28
+    const centerContrastScore = this._nivelBolhaContrasteCentro(paperGray, cx, cy, raio)
+    const supportScore = binaryScore * 0.45 + grayScore * 0.55 + Math.max(0, grayScore - binaryScore) * 0.18
+    const cappedSupport = Math.min(supportScore, centerContrastScore + 0.16)
+    const combined = centerContrastScore * 0.72 + cappedSupport * 0.28
     return Math.max(0, Math.min(1, combined))
   }
 }
