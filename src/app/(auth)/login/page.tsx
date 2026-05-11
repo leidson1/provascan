@@ -135,7 +135,7 @@ function LoginForm() {
         </CardContent>
       </form>
 
-      <CardFooter className="justify-center">
+      <CardFooter className="flex-col gap-2 pt-0">
         <p className="text-sm text-muted-foreground">
           Nao tem conta?{" "}
           <Link
@@ -145,6 +145,11 @@ function LoginForm() {
             Cadastre-se
           </Link>
         </p>
+        <div className="rounded-md bg-blue-50 px-3 py-1.5 text-center">
+          <p className="text-[11px] text-blue-700">
+            Ja usa o <strong>SalaMap</strong>? Use o mesmo login e senha aqui!
+          </p>
+        </div>
       </CardFooter>
     </Card>
   );
