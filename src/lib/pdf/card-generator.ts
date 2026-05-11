@@ -300,8 +300,8 @@ function desenharCartao(
     C.tituloX,
     yOff + C.tituloY + 1.5,
     C.largura - C.tituloX - C.margem - 6,
-    nomeInstituicao ? 10 : 12,
-    7
+    nomeInstituicao ? 11 : 12.5,
+    7.5
   )
 
   doc.setFont('helvetica', 'normal')
@@ -312,8 +312,8 @@ function desenharCartao(
     C.tituloX,
     yOff + C.tituloY + 7,
     C.largura - C.tituloX - C.margem - 6,
-    7.5,
-    5.5
+    8,
+    6
   )
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(80)
@@ -323,46 +323,64 @@ function desenharCartao(
     C.tituloX,
     yOff + C.tituloY + 11.5,
     C.largura - C.tituloX - C.margem - 6,
-    7,
-    5.5
+    7.5,
+    6
   )
 
   // ── 4. Dados do aluno ──
   const isReserva = String(aluno.id).charAt(0) === 'R'
+  const alunoBoxX = C.alunoBoxX
+  const alunoBoxY = yOff + C.alunoBoxY
+  const alunoTextY = alunoBoxY + C.alunoBoxH / 2 + 1.5
   doc.setDrawColor(180)
   doc.setLineWidth(0.3)
   doc.setFillColor(255, 255, 255)
-  doc.roundedRect(C.margem + 2, yOff + C.alunoY - 4.5, C.largura - C.margem * 2 - 4, 10.5, 2, 2, 'FD')
+  doc.roundedRect(alunoBoxX, alunoBoxY, C.alunoBoxW, C.alunoBoxH, 1.8, 1.8, 'FD')
 
   if (isReserva) {
     // Cartão reserva: badge + linha para escrever nome
     doc.setFillColor(239, 68, 68)
-    doc.roundedRect(C.margem + 4, yOff + C.alunoY - 3, 22, 7, 1.5, 1.5, 'F')
+    doc.roundedRect(alunoBoxX + 2, alunoBoxY + 1.2, 22, 6.5, 1.5, 1.5, 'F')
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7)
-    doc.text('RESERVA', C.margem + 6, yOff + C.alunoY + 1.7)
+    doc.text('RESERVA', alunoBoxX + 4, alunoBoxY + 5.8)
     // Linha pontilhada para nome
     doc.setDrawColor(150)
     doc.setLineWidth(0.3)
-    const lineStart = C.margem + 32
-    const lineEnd = C.largura - C.margem - 6
+    const lineStart = alunoBoxX + 32
+    const lineEnd = alunoBoxX + C.alunoBoxW - 6
     for (let lx = lineStart; lx < lineEnd; lx += 3) {
-      doc.line(lx, yOff + C.alunoY + 2.6, lx + 1.5, yOff + C.alunoY + 2.6)
+      doc.line(lx, alunoBoxY + 6.2, lx + 1.5, alunoBoxY + 6.2)
     }
     doc.setTextColor(150)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
-    doc.text('Nome:', C.margem + 31, yOff + C.alunoY - 0.7)
+    doc.text('Nome:', alunoBoxX + 31, alunoBoxY + 3.2)
   } else {
     doc.setTextColor(0)
     doc.setFont('helvetica', 'bold')
-    drawFittedText(doc, aluno.nome, C.margem + 6, yOff + C.alunoY + 1, C.largura - C.margem * 2 - 46, 9.5, 6.5)
+    drawFittedText(
+      doc,
+      aluno.nome,
+      alunoBoxX + 4,
+      alunoTextY,
+      C.alunoBoxW - C.alunoNumeroW - 10,
+      8.5,
+      6
+    )
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
     doc.setTextColor(80)
-    doc.text(`N\u00BA ${aluno.numero || '-'}`, C.largura - C.margem - 20, yOff + C.alunoY + 1)
+    drawFittedText(
+      doc,
+      `N\u00BA ${aluno.numero || '-'}`,
+      alunoBoxX + C.alunoBoxW - C.alunoNumeroW + 2,
+      alunoTextY,
+      C.alunoNumeroW - 6,
+      7,
+      5.5
+    )
   }
 
   // ── 5. Grade de bolhas ──
@@ -486,16 +504,17 @@ function desenharCartao(
 
   // ── 6. Instruções ──
   const hasDiscursivas = tipos.some(t => t?.trim() === 'D')
+  const instrLeftX = C.margem + C.marcador + 3
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7)
   doc.setTextColor(60)
-  doc.text('USE CANETA PRETA', C.margem + 5, yOff + C.instrY)
+  doc.text('USE CANETA PRETA', instrLeftX, yOff + C.instrY)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(6)
   doc.setTextColor(120)
   doc.text(
     'Preencha a bolha completamente.  Marque apenas UMA alternativa.  Não use corretivo.',
-    C.margem + 42,
+    C.margem + 56,
     yOff + C.instrY
   )
   if (hasDiscursivas) {
@@ -504,7 +523,7 @@ function desenharCartao(
     doc.setFontSize(6)
     doc.text(
       'Questões com bolhas azuis são discursivas. Marque o critério de avaliação.',
-      C.margem + 5,
+      instrLeftX,
       yOff + C.instrY + 4
     )
   }

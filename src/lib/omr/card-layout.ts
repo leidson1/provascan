@@ -23,10 +23,15 @@ export const CARTAO = {
   // Cabeçalho compacto.
   tituloX: 48,
   tituloY: 12,
-  alunoY: 47,
+  alunoY: 39,
+  alunoBoxX: 48,
+  alunoBoxY: 38,
+  alunoBoxW: 154,
+  alunoBoxH: 9,
+  alunoNumeroW: 24,
 
   // Grade de bolhas.
-  gradeY: 58,
+  gradeY: 55,
   bolhaRaio: 2,
   linhaAltura: 6,
   colunaLargura: 8.2,
@@ -34,7 +39,7 @@ export const CARTAO = {
   gradeX: 15,
 
   // Instruções e limites.
-  instrY: 142,
+  instrY: 143,
   gradeRodapeGap: 4,
   maxQuestoes: 60,
 } as const
@@ -63,7 +68,7 @@ export function calcNumeroColunas(nq: number, nalts = 5): number {
 }
 
 export function calcGapEntreColunas(numCols: number): number {
-  if (numCols >= 4) return 7
+  if (numCols >= 4) return 6
   if (numCols >= 3) return 7
   if (numCols === 2) return 12
   return 0
