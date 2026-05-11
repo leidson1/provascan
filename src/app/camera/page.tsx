@@ -47,7 +47,7 @@ const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const ENABLE_LIVE_SCANNER = false
 // Diagnóstico e telemetria seguem disponíveis para desenvolvimento/admin,
 // mas ficam ocultos para os usuários até criarmos uma área própria de testes.
-const ENABLE_OMR_DIAGNOSTICS = false
+const ENABLE_OMR_DIAGNOSTICS = true
 
 function detectDeviceTier(): DeviceTier {
   if (typeof navigator === 'undefined') return 'balanced'
