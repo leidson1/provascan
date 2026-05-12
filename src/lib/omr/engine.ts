@@ -507,23 +507,22 @@ export class OMREngine {
       warped = this._corrigirPerspectiva(src, marcadoresOrientados)
       telemetry.candidateCount = 1
 
-      const analise = this._analisarWarped(
+      const analise = this._analisarMelhorOrientacao(
         warped,
         nq,
         nalts,
         letrasPerQ,
         tiposQuestoes,
         criterioDiscursiva,
-        expectedProvaId,
-        true
+        expectedProvaId
       )
 
       telemetry.analysisMs = analise.telemetry.analysisMs
       telemetry.qrMs = analise.telemetry.qrMs
       telemetry.bubbleMs = analise.telemetry.bubbleMs
       telemetry.debugMs = analise.telemetry.debugMs
-      telemetry.orientationChecks = 1
-      telemetry.fastPathUsed = true
+      telemetry.orientationChecks = analise.telemetry.orientationChecks
+      telemetry.fastPathUsed = analise.telemetry.fastPathUsed
       telemetry.selectedSource = 'markers'
       telemetry.layoutVariant = analise.layoutVariant?.id || 'unknown'
       telemetry.totalMs = this._now() - startedAt
