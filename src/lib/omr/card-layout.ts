@@ -163,6 +163,8 @@ export function calcBolhaRaioVisual(nq: number, nalts = 5): number {
 }
 
 export function calcBolhaRaioVisualForLayout(layout: CartaoOMRLayout, nq: number, nalts = 5): number {
+  if (isLayoutLegado(layout)) return layout.bolhaRaio
+
   const linhaAltura = calcLinhaAlturaForLayout(layout, nq, nalts)
   return Math.min(layout.bolhaRaio, Math.max(1.45, linhaAltura * 0.34))
 }
