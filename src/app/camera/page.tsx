@@ -48,7 +48,7 @@ const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const ENABLE_LIVE_SCANNER = false
 // Diagnóstico e telemetria seguem disponíveis para desenvolvimento/admin,
 // mas ficam ocultos para os usuários até criarmos uma área própria de testes.
-const ENABLE_OMR_DIAGNOSTICS = true
+const ENABLE_OMR_DIAGNOSTICS = false
 const SHOW_CAMERA_MAINTENANCE_NOTICE = true
 
 function detectDeviceTier(): DeviceTier {
@@ -292,7 +292,8 @@ export default function CameraPageWrapper() {
 function CameraPage() {
   const searchParams = useSearchParams()
   const paramProvaId = searchParams.get('p')
-  const omrStrategy: OMRStrategy = searchParams.get('motor') === 'robust' ? 'robust' : 'simple'
+  const omrStrategy: OMRStrategy =
+    ENABLE_OMR_DIAGNOSTICS && searchParams.get('motor') === 'robust' ? 'robust' : 'simple'
   const supabase = useMemo(() => createClient(), [])
   const deviceTier = useMemo(() => detectDeviceTier(), [])
   const captureResizeOptions = useMemo(
