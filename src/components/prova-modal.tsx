@@ -149,6 +149,11 @@ const CRITERIO_LABELS: Record<number, { labels: string[]; cores: string[] }> = {
   4: { labels: ['E', 'B', 'P', 'I'], cores: ['bg-emerald-500', 'bg-teal-400', 'bg-amber-400', 'bg-red-500'] },
 }
 
+function formatDecimal(value: number, digits = 2) {
+  if (!Number.isFinite(value)) return '0'
+  return value.toFixed(digits).replace(/\.?0+$/, '')
+}
+
 export function ProvaModal({
   open,
   onOpenChange,
@@ -281,9 +286,18 @@ function ProvaModalInner({
     .slice(0, numQuestoes)
     .filter((_, index) => tiposArr[index] === 'D')
     .reduce((sum, value) => sum + (value || 0), 0)
+  const pesoObjetivas = pesArr
+    .slice(0, numQuestoes)
+    .filter((_, index) => tiposArr[index] !== 'D')
+    .reduce((sum, value) => sum + (value || 0), 0)
   const pesoTotal = pesArr
     .slice(0, numQuestoes)
     .reduce((sum, value) => sum + (value || 0), 0)
+  const totalObjetivas = tiposArr.filter((tipo) => tipo !== 'D').length
+  const totalDiscursivas = tiposArr.filter((tipo) => tipo === 'D').length
+  const pontosPorPeso = modoAvaliacao === 'nota' && pesoTotal > 0 ? notaTotal / pesoTotal : 0
+  const pontosObjetivas = pesoObjetivas * pontosPorPeso
+  const pontosDiscursivas = pesoDiscursivas * pontosPorPeso
 
   function gabSelect(index: number, value: string) {
     const next = [...gabArr]
@@ -659,9 +673,36 @@ function ProvaModalInner({
             </div>
 
             {tipoProva !== 'objetiva' && modoAvaliacao === 'nota' && (
-              <p className="text-[10px] leading-relaxed text-gray-400">
-                A Nota Total vale a prova inteira. Estes campos são pesos relativos das discursivas dentro dessa nota.
-              </p>
+              <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-[11px] text-blue-900">
+                <div className="mb-2 font-semibold">Como esta nota será calculada</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg bg-white/75 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-wide text-blue-400">Nota total</div>
+                    <div className="font-bold">{formatDecimal(notaTotal)} pts</div>
+                  </div>
+                  <div className="rounded-lg bg-white/75 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-wide text-blue-400">Objetivas</div>
+                    <div className="font-bold">
+                      {formatDecimal(pontosObjetivas)} pts
+                    </div>
+                    <div className="text-[10px] text-blue-500">
+                      {totalObjetivas} quest. · peso {formatDecimal(pesoObjetivas)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-white/75 px-2 py-1.5">
+                    <div className="text-[10px] uppercase tracking-wide text-blue-400">Discursivas</div>
+                    <div className="font-bold">
+                      {formatDecimal(pontosDiscursivas)} pts
+                    </div>
+                    <div className="text-[10px] text-blue-500">
+                      {totalDiscursivas} quest. · peso {formatDecimal(pesoDiscursivas)}
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-2 leading-relaxed text-blue-700">
+                  Cada objetiva tem peso 1 automaticamente. Nas discursivas, o campo à direita ajusta o peso relativo; se ficar 1, ela vale o mesmo que uma objetiva. Nesta configuração, cada peso 1 vale {formatDecimal(pontosPorPeso)} ponto(s).
+                </p>
+              </div>
             )}
 
             <div
@@ -676,7 +717,7 @@ function ProvaModalInner({
                 <span>
                   {tipoProva === 'discursiva'
                     ? `Nota total: ${pesoTotal.toFixed(1)} pts`
-                    : `Peso discursivas: ${pesoDiscursivas.toFixed(1)}`}
+                    : `Discursivas: ${formatDecimal(pontosDiscursivas)} pts`}
                 </span>
               )}
             </div>
