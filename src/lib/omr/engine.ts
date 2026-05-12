@@ -9,8 +9,10 @@ import {
   CARTAO,
   calcBolhaRaioVisual,
   calcPosicoesBolhas,
-  calcPosicoesBolhasMista,
+  getOMRLayoutVariants,
   type BubblePosition,
+  type CartaoOMRLayout,
+  type OMRLayoutVariant,
 } from './card-layout'
 
 // ── Types ──────────────────────────────────────────────────
@@ -39,6 +41,7 @@ export interface OMRTelemetry {
   orientationChecks: number
   fastPathUsed: boolean
   selectedSource: 'page' | 'markers' | 'unknown'
+  layoutVariant: 'atual' | 'legado' | 'unknown'
 }
 
 export interface OMRResposta {
@@ -74,6 +77,7 @@ interface OrientationAnalysisTelemetry extends WarpAnalysisTelemetry {
   orientationChecks: number
   fastPathUsed: boolean
   selectedSource: 'page' | 'markers' | 'unknown'
+  layoutVariant: 'atual' | 'legado' | 'unknown'
 }
 
 interface WarpedAnalysisResult {
@@ -84,6 +88,7 @@ interface WarpedAnalysisResult {
   orientationScore: number
   telemetry: WarpAnalysisTelemetry
   layoutTransform?: LayoutTransform | null
+  layoutVariant?: OMRLayoutVariant
 }
 
 interface OrientationAnalysisResult {
@@ -92,6 +97,7 @@ interface OrientationAnalysisResult {
   debug?: { imageUrl: string; levels: DebugLevel[] }
   score: number
   telemetry: OrientationAnalysisTelemetry
+  layoutVariant?: OMRLayoutVariant
 }
 
 interface Marcadores {
@@ -249,6 +255,7 @@ export class OMREngine {
       orientationChecks: 0,
       fastPathUsed: false,
       selectedSource: 'unknown',
+      layoutVariant: 'unknown',
     }
 
     try {
@@ -351,6 +358,7 @@ export class OMREngine {
             telemetry: {
               ...tentativa.telemetry,
               selectedSource: candidatoWarp.source,
+              layoutVariant: tentativa.layoutVariant?.id || 'unknown',
             },
           }
         }
@@ -366,6 +374,7 @@ export class OMREngine {
             telemetry: {
               ...tentativa.telemetry,
               selectedSource: candidatoWarp.source,
+              layoutVariant: tentativa.layoutVariant?.id || 'unknown',
               fastPathUsed:
                 tentativa.telemetry.fastPathUsed || idx < candidatosWarp.length - 1,
             },
@@ -390,6 +399,7 @@ export class OMREngine {
       telemetry.orientationChecks = analise.telemetry.orientationChecks
       telemetry.fastPathUsed = analise.telemetry.fastPathUsed
       telemetry.selectedSource = analise.telemetry.selectedSource
+      telemetry.layoutVariant = analise.telemetry.layoutVariant
       telemetry.totalMs = this._now() - startedAt
 
       return {
@@ -437,19 +447,52 @@ export class OMREngine {
     try {
       const bubbleStartedAt = this._now()
       cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
-      const layoutTransform = this._estimarTransformacaoLayout(wGray)
       const orientationScore = this._pontuarOrientador(wGray)
-      const respostas = this._lerBolhasMista(
-        wGray,
-        nq,
-        nalts,
-        letrasPerQ,
-        tiposQuestoes,
-        criterioDiscursiva,
-        layoutTransform
-      )
+      const variantesLayout = getOMRLayoutVariants(nq, nalts, tiposQuestoes, criterioDiscursiva)
+      let melhorLeitura: {
+        respostas: OMRResposta[]
+        score: number
+        layoutTransform: LayoutTransform | null
+        variant: OMRLayoutVariant
+      } | null = null
+
+      for (const variant of variantesLayout) {
+        const layoutTransform = this._estimarTransformacaoLayout(wGray, variant.cartao)
+        const respostas = this._lerBolhasMista(
+          wGray,
+          nq,
+          letrasPerQ,
+          variant,
+          layoutTransform
+        )
+        const structuralScore = this._pontuarEstruturaEsperada(wGray, variant)
+        const score =
+          this._pontuarAnalise(qr, respostas, expectedProvaId) +
+          structuralScore +
+          (variant.id === 'atual' ? orientationScore : 0)
+
+        if (!melhorLeitura || score > melhorLeitura.score) {
+          melhorLeitura = {
+            respostas,
+            score,
+            layoutTransform,
+            variant,
+          }
+        }
+
+        if (variant.id === 'atual' && this._atingiuScoreConfiavel(
+          { qr, respostas, score, orientationScore },
+          nq,
+          expectedProvaId
+        )) {
+          break
+        }
+      }
+
+      const respostas = melhorLeitura?.respostas || []
+      const layoutTransform = melhorLeitura?.layoutTransform || null
+      const layoutVariant = melhorLeitura?.variant || variantesLayout[0]
       const bubbleMs = this._now() - bubbleStartedAt
-      const structuralScore = this._pontuarEstruturaEsperada(wGray, nq, nalts, tiposQuestoes, criterioDiscursiva)
 
       let debug: { imageUrl: string; levels: DebugLevel[] } | undefined
       let debugMs = 0
@@ -460,10 +503,8 @@ export class OMREngine {
             warped,
             wGray,
             nq,
-            nalts,
             respostas,
-            tiposQuestoes,
-            criterioDiscursiva,
+            layoutVariant,
             layoutTransform
           )
         } catch {
@@ -477,9 +518,10 @@ export class OMREngine {
         qr,
         respostas,
         debug,
-        score: this._pontuarAnalise(qr, respostas, expectedProvaId) + structuralScore + orientationScore,
+        score: melhorLeitura?.score || this._pontuarAnalise(qr, respostas, expectedProvaId),
         orientationScore,
         layoutTransform,
+        layoutVariant,
         telemetry: {
           analysisMs: this._now() - analysisStartedAt,
           qrMs,
@@ -516,6 +558,7 @@ export class OMREngine {
       orientationChecks: 0,
       fastPathUsed: false,
       selectedSource: 'unknown',
+      layoutVariant: 'unknown',
     }
     let melhor: WarpedAnalysisResult | null = null
     let melhorFinal: OrientationAnalysisResult | null = null
@@ -561,10 +604,8 @@ export class OMREngine {
           orientacoes[melhorOrientacao].mat,
           bestGray,
           nq,
-          nalts,
           melhor?.respostas || [],
-          tiposQuestoes,
-          criterioDiscursiva,
+          melhor?.layoutVariant || getOMRLayoutVariants(nq, nalts, tiposQuestoes, criterioDiscursiva)[0],
           melhor?.layoutTransform
         )
       } catch {
@@ -573,6 +614,8 @@ export class OMREngine {
         bestGray.delete()
         telemetry.debugMs += this._now() - debugStartedAt
       }
+
+      telemetry.layoutVariant = melhor?.layoutVariant?.id || 'unknown'
 
       melhorFinal = {
         ...melhor!,
@@ -655,22 +698,20 @@ export class OMREngine {
 
   private _pontuarEstruturaEsperada(
     wGray: any,
-    nq: number,
-    nalts: number,
-    tiposQuestoes?: string,
-    criterioDiscursiva?: number
+    variant: OMRLayoutVariant
   ): number {
     const px = OMREngine.PX_MM
-    const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
+    const C = variant.cartao
+    const posicoes = variant.posicoes
     const qrMargin = Math.round(4 * px)
     const qrRect = new cv.Rect(
-      Math.max(0, Math.round((CARTAO.qrX - qrMargin / px) * px)),
-      Math.max(0, Math.round((CARTAO.qrY - qrMargin / px) * px)),
-      Math.min(wGray.cols, Math.round((CARTAO.qrTamanho + qrMargin * 2 / px) * px)),
-      Math.min(wGray.rows, Math.round((CARTAO.qrTamanho + qrMargin * 2 / px) * px))
+      Math.max(0, Math.round((C.qrX - qrMargin / px) * px)),
+      Math.max(0, Math.round((C.qrY - qrMargin / px) * px)),
+      Math.min(wGray.cols, Math.round((C.qrTamanho + qrMargin * 2 / px) * px)),
+      Math.min(wGray.rows, Math.round((C.qrTamanho + qrMargin * 2 / px) * px))
     )
 
-    const raio = Math.round(CARTAO.bolhaRaio * px * 1.3)
+    const raio = Math.round(C.bolhaRaio * px * 1.3)
     let minX = Number.POSITIVE_INFINITY
     let minY = Number.POSITIVE_INFINITY
     let maxX = 0
@@ -756,11 +797,11 @@ export class OMREngine {
     return maxScore * (1 - desvio / tolerancia)
   }
 
-  private _estimarTransformacaoLayout(wGray: any): LayoutTransform | null {
+  private _estimarTransformacaoLayout(wGray: any, cartao: CartaoOMRLayout = CARTAO): LayoutTransform | null {
     const px = OMREngine.PX_MM
-    const mc = Math.round((CARTAO.margem + CARTAO.marcador / 2) * px)
-    const rc = Math.round((CARTAO.largura - CARTAO.margem - CARTAO.marcador / 2) * px)
-    const bc = Math.round((CARTAO.altura - CARTAO.margem - CARTAO.marcador / 2) * px)
+    const mc = Math.round((cartao.margem + cartao.marcador / 2) * px)
+    const rc = Math.round((cartao.largura - cartao.margem - cartao.marcador / 2) * px)
+    const bc = Math.round((cartao.altura - cartao.margem - cartao.marcador / 2) * px)
     const expected: Marcadores = {
       tl: { x: mc, y: mc },
       tr: { x: rc, y: mc },
@@ -775,10 +816,10 @@ export class OMREngine {
     try {
       cv.threshold(normalized, bin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
 
-      const tl = this._localizarMarcadorEsperado(bin, expected.tl, halfWindow)
-      const tr = this._localizarMarcadorEsperado(bin, expected.tr, halfWindow)
-      const bl = this._localizarMarcadorEsperado(bin, expected.bl, halfWindow)
-      const br = this._localizarMarcadorEsperado(bin, expected.br, halfWindow)
+      const tl = this._localizarMarcadorEsperado(bin, expected.tl, halfWindow, cartao)
+      const tr = this._localizarMarcadorEsperado(bin, expected.tr, halfWindow, cartao)
+      const bl = this._localizarMarcadorEsperado(bin, expected.bl, halfWindow, cartao)
+      const br = this._localizarMarcadorEsperado(bin, expected.br, halfWindow, cartao)
       if (!tl || !tr || !bl || !br) return null
 
       const deslocamentos = [
@@ -821,7 +862,12 @@ export class OMREngine {
     }
   }
 
-  private _localizarMarcadorEsperado(matBin: any, expected: Ponto, halfWindow: number): Ponto | null {
+  private _localizarMarcadorEsperado(
+    matBin: any,
+    expected: Ponto,
+    halfWindow: number,
+    cartao: CartaoOMRLayout = CARTAO
+  ): Ponto | null {
     if (
       expected.x < 0 ||
       expected.y < 0 ||
@@ -842,7 +888,7 @@ export class OMREngine {
     const roi = matBin.roi(roiRect)
     const contours = new cv.MatVector()
     const hierarchy = new cv.Mat()
-    const targetSize = CARTAO.marcador * OMREngine.PX_MM
+    const targetSize = cartao.marcador * OMREngine.PX_MM
     let best: Ponto | null = null
     let bestScore = Infinity
 
@@ -903,8 +949,18 @@ export class OMREngine {
     )
   }
 
-  private _raioAmostraBolhas(nq: number, nalts: number, fator: number): number {
-    const raioVisualPx = calcBolhaRaioVisual(nq, nalts) * OMREngine.PX_MM
+  private _raioAmostraBolhas(variant: OMRLayoutVariant, fator: number): number
+  private _raioAmostraBolhas(nq: number, nalts: number, fator: number): number
+  private _raioAmostraBolhas(
+    variantOrNq: OMRLayoutVariant | number,
+    naltsOrFator: number,
+    maybeFator?: number
+  ): number {
+    const raioVisualMm = typeof variantOrNq === 'number'
+      ? calcBolhaRaioVisual(variantOrNq, naltsOrFator)
+      : variantOrNq.bolhaRaioVisual
+    const fator = typeof variantOrNq === 'number' ? maybeFator ?? 1 : naltsOrFator
+    const raioVisualPx = raioVisualMm * OMREngine.PX_MM
     return Math.max(2, Math.round(raioVisualPx * fator))
   }
 
@@ -1905,15 +1961,12 @@ export class OMREngine {
   private _lerBolhasMista(
     wGray: any,
     nq: number,
-    nalts: number,
     letrasPerQ: string[][],
-    tiposQuestoes?: string,
-    criterioDiscursiva?: number,
+    variant: OMRLayoutVariant,
     layoutTransform?: LayoutTransform | null
   ): OMRResposta[] {
-    const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
-    const pontosAmostra = this._mapearPosicoesBolhas(posicoes, layoutTransform)
-    const raio = this._raioAmostraBolhas(nq, nalts, 0.75)
+    const pontosAmostra = this._mapearPosicoesBolhas(variant.posicoes, layoutTransform)
+    const raio = this._raioAmostraBolhas(variant, 0.75)
 
     const preparedGray = this._prepararCinzaBolhas(wGray)
     const inkGray = this._realcarMarcasBolhas(preparedGray)
@@ -2093,15 +2146,12 @@ export class OMREngine {
     warped: any,
     wGray: any,
     nq: number,
-    nalts: number,
     respostas: OMRResposta[],
-    tiposQuestoes?: string,
-    criterioDiscursiva?: number,
+    variant: OMRLayoutVariant,
     layoutTransform?: LayoutTransform | null
   ): { imageUrl: string; levels: DebugLevel[] } {
-    const posicoes = calcPosicoesBolhasMista(nq, nalts, tiposQuestoes, criterioDiscursiva)
-    const pontosAmostra = this._mapearPosicoesBolhas(posicoes, layoutTransform)
-    const raio = this._raioAmostraBolhas(nq, nalts, 1.1)
+    const pontosAmostra = this._mapearPosicoesBolhas(variant.posicoes, layoutTransform)
+    const raio = this._raioAmostraBolhas(variant, 1.1)
 
     const debug = warped.clone()
 

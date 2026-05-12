@@ -581,6 +581,7 @@ function CameraPage() {
       ['Candidatos', String(captureTelemetry.candidateCount)],
       ['Rotações testadas', String(captureTelemetry.orientationChecks)],
       ['Origem escolhida', captureTelemetry.selectedSource === 'page' ? 'folha' : captureTelemetry.selectedSource === 'markers' ? 'marcadores' : '-'],
+      ['Layout escolhido', captureTelemetry.layoutVariant === 'legado' ? 'legado' : captureTelemetry.layoutVariant === 'atual' ? 'atual' : '-'],
       ['Parada antecipada', captureTelemetry.fastPathUsed ? 'sim' : 'não'],
     ] : []
 
