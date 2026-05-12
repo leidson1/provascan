@@ -64,6 +64,7 @@ type DeviceTier = 'low' | 'balanced' | 'high'
 
 export interface OMRProcessOptions {
   deviceTier?: DeviceTier
+  strategy?: 'robust' | 'simple'
 }
 
 interface WarpAnalysisTelemetry {
@@ -258,6 +259,20 @@ export class OMREngine {
       layoutVariant: 'unknown',
     }
 
+    if (options.strategy === 'simple') {
+      return this._processarSimples(
+        canvas,
+        nq,
+        nalts,
+        letrasPerQ,
+        tiposQuestoes,
+        criterioDiscursiva,
+        expectedProvaId,
+        telemetry,
+        startedAt
+      )
+    }
+
     try {
       const preprocessStartedAt = this._now()
       src = cv.imread(canvas)
@@ -427,6 +442,116 @@ export class OMREngine {
   }
 
   // ── NORMALIZAÇÃO DE ILUMINAÇÃO (leve, sem CLAHE pesado) ────
+
+  private _processarSimples(
+    canvas: HTMLCanvasElement,
+    nq: number,
+    nalts: number,
+    letrasPerQ: string[][],
+    tiposQuestoes: string | undefined,
+    criterioDiscursiva: number | undefined,
+    expectedProvaId: number | undefined,
+    telemetry: OMRTelemetry,
+    startedAt: number
+  ): OMRResult {
+    let src: any = null
+    let gray: any = null
+    let warped: any = null
+    const allMats: any[] = []
+
+    try {
+      const preprocessStartedAt = this._now()
+      src = cv.imread(canvas)
+      gray = new cv.Mat()
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+
+      const blurred = new cv.Mat()
+      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0)
+      const bin1 = new cv.Mat()
+      cv.threshold(blurred, bin1, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+      allMats.push(blurred, bin1)
+      telemetry.preprocessMs = this._now() - preprocessStartedAt
+
+      const markerDetectStartedAt = this._now()
+      let marcadores = this._encontrarMarcadores(bin1)
+
+      if (!marcadores) {
+        const bin2 = new cv.Mat()
+        cv.adaptiveThreshold(
+          gray, bin2, 255,
+          cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 51, 10
+        )
+        allMats.push(bin2)
+        marcadores = this._encontrarMarcadores(bin2)
+      }
+
+      if (!marcadores) {
+        const normalized = this._normalizarIluminacao(gray)
+        const bin3 = new cv.Mat()
+        cv.threshold(normalized, bin3, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+        allMats.push(normalized, bin3)
+        marcadores = this._encontrarMarcadores(bin3)
+      }
+      telemetry.markerDetectMs = this._now() - markerDetectStartedAt
+
+      if (!marcadores) {
+        telemetry.totalMs = this._now() - startedAt
+        return {
+          sucesso: false,
+          mensagem: 'Marcadores não detectados no motor simples. Tente enquadrar todo o cartão ou use o motor robusto.',
+          telemetry,
+        }
+      }
+
+      const marcadoresOrientados = this._alinharOrientacao(src, marcadores, 'markers')
+      warped = this._corrigirPerspectiva(src, marcadoresOrientados)
+      telemetry.candidateCount = 1
+
+      const analise = this._analisarWarped(
+        warped,
+        nq,
+        nalts,
+        letrasPerQ,
+        tiposQuestoes,
+        criterioDiscursiva,
+        expectedProvaId,
+        true
+      )
+
+      telemetry.analysisMs = analise.telemetry.analysisMs
+      telemetry.qrMs = analise.telemetry.qrMs
+      telemetry.bubbleMs = analise.telemetry.bubbleMs
+      telemetry.debugMs = analise.telemetry.debugMs
+      telemetry.orientationChecks = 1
+      telemetry.fastPathUsed = true
+      telemetry.selectedSource = 'markers'
+      telemetry.layoutVariant = analise.layoutVariant?.id || 'unknown'
+      telemetry.totalMs = this._now() - startedAt
+
+      return {
+        sucesso: true,
+        qr: analise.qr ?? undefined,
+        respostas: analise.respostas,
+        confianca: analise.respostas.map((r) => r.confianca),
+        debug: analise.debug,
+        telemetry,
+      }
+    } catch (e: unknown) {
+      telemetry.totalMs = this._now() - startedAt
+      return {
+        sucesso: false,
+        mensagem: 'Erro no motor simples: ' + (e instanceof Error ? e.message : String(e)),
+        telemetry,
+      }
+    } finally {
+      if (src) src.delete()
+      if (gray) gray.delete()
+      if (warped) warped.delete()
+      for (const mat of allMats) {
+        if (mat) mat.delete()
+      }
+    }
+  }
 
   private _analisarWarped(
     warped: any,

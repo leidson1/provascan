@@ -32,6 +32,7 @@ type ProvaWithRelations = Prova & {
   turma?: { serie: string; turma: string }
 }
 type ExistingResultRef = { id: number }
+type OMRStrategy = 'simple' | 'robust'
 type CaptureNoticeTone = 'info' | 'warning' | 'error'
 type CaptureNotice = {
   tone: CaptureNoticeTone
@@ -291,6 +292,7 @@ export default function CameraPageWrapper() {
 function CameraPage() {
   const searchParams = useSearchParams()
   const paramProvaId = searchParams.get('p')
+  const omrStrategy: OMRStrategy = searchParams.get('motor') === 'robust' ? 'robust' : 'simple'
   const supabase = useMemo(() => createClient(), [])
   const deviceTier = useMemo(() => detectDeviceTier(), [])
   const captureResizeOptions = useMemo(
@@ -569,6 +571,7 @@ function CameraPage() {
     const showImage = options?.showImage ?? true
 
     const telemetryRows = captureTelemetry ? [
+      ['Motor OMR', omrStrategy === 'simple' ? 'simples (teste)' : 'robusto'],
       ['Perfil do aparelho', captureTelemetry.deviceTier === 'low' ? 'leve' : captureTelemetry.deviceTier === 'high' ? 'forte' : 'equilibrado'],
       ['Tempo total', formatMs(captureTelemetry.totalMs)],
       ['Pre-processamento', formatMs(captureTelemetry.preprocessMs)],
@@ -642,7 +645,7 @@ function CameraPage() {
           prova?.tipos_questoes || undefined,
           prova?.criterio_discursiva || undefined,
           prova?.id || undefined,
-          { deviceTier }
+          { deviceTier, strategy: omrStrategy }
         ) as EngineOMRResult
 
         if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
@@ -783,7 +786,7 @@ function CameraPage() {
           prova?.tipos_questoes || undefined,
           prova?.criterio_discursiva || undefined,
           prova?.id || undefined,
-          { deviceTier }
+          { deviceTier, strategy: omrStrategy }
         ) as EngineOMRResult
 
         if (result && result.sucesso && result.respostas && result.respostas.length > 0) {
