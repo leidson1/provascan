@@ -3,8 +3,6 @@
 import { useCallback, useRef, useEffect } from 'react'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
 
-const LETRAS = ['A', 'B', 'C', 'D', 'E']
-
 interface CorrectionGridProps {
   gabarito: string[]
   numQuestoes: number
@@ -17,6 +15,7 @@ interface CorrectionGridProps {
       questoes: Record<string, number | string>
       acertos: number
       percentual: number
+      nota?: number | null
     }
   >
   onTogglePresenca: (alunoId: number) => void
@@ -24,6 +23,8 @@ interface CorrectionGridProps {
   modoVisualizacao?: boolean
   tiposQuestoes?: string[]
   criterioDiscursiva?: number
+  modoAvaliacao?: 'acertos' | 'nota'
+  notaTotal?: number | null
 }
 
 function getDiscursivaStyle(valor: number | string | undefined) {
@@ -41,10 +42,14 @@ function getDiscursivaLabel(valor: number | string | undefined, criterio: number
   return found?.label || '–'
 }
 
+function formatScore(value: number) {
+  if (Number.isInteger(value)) return String(value)
+  return value.toFixed(2).replace(/\.?0+$/, '')
+}
+
 export function CorrectionGrid({
   gabarito,
   numQuestoes,
-  numAlternativas,
   alunos,
   dados,
   onTogglePresenca,
@@ -52,9 +57,10 @@ export function CorrectionGrid({
   modoVisualizacao = false,
   tiposQuestoes = [],
   criterioDiscursiva = 3,
+  modoAvaliacao = 'acertos',
+  notaTotal = null,
 }: CorrectionGridProps) {
   const gridRef = useRef<HTMLDivElement>(null)
-  const alternativas = LETRAS.slice(0, numAlternativas)
 
   // Keyboard navigation
   const focusedCell = useRef<{ row: number; col: number }>({ row: 0, col: 0 })
@@ -226,7 +232,7 @@ export function CorrectionGrid({
               )
             })}
             <th className="bg-indigo-50 px-2 py-2 text-center text-xs font-semibold text-indigo-600 whitespace-nowrap">
-              Total
+              {modoAvaliacao === 'nota' && notaTotal ? 'Nota' : 'Total'}
             </th>
           </tr>
         </thead>
@@ -237,6 +243,7 @@ export function CorrectionGrid({
               questoes: {},
               acertos: 0,
               percentual: 0,
+              nota: null,
             }
             const isFalta = d.presenca === 'F'
             const isP = isPresente(d.presenca)
@@ -325,9 +332,13 @@ export function CorrectionGrid({
                 })}
                 <td className="px-2 py-1 text-center text-xs font-semibold text-gray-700 whitespace-nowrap">
                   {isP
-                    ? `${d.acertos}/${numQuestoes}`
+                    ? modoAvaliacao === 'nota' && notaTotal
+                      ? `${formatScore(d.nota ?? 0)}/${formatScore(notaTotal)}`
+                      : `${formatScore(d.acertos)}/${numQuestoes}`
                     : isFalta
-                      ? '0'
+                      ? modoAvaliacao === 'nota' && notaTotal
+                        ? `0/${formatScore(notaTotal)}`
+                        : '0'
                       : '-'}
                 </td>
               </tr>

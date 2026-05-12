@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { CorrectionGrid } from '@/components/correction-grid'
@@ -22,6 +22,11 @@ const LETRAS = ['A', 'B', 'C', 'D', 'E']
 
 function isPresente(p: string) {
   return p === 'P' || p === '*'
+}
+
+function formatScore(value: number) {
+  if (Number.isInteger(value)) return String(value)
+  return value.toFixed(2).replace(/\.?0+$/, '')
 }
 
 type DadosAluno = {
@@ -115,9 +120,15 @@ export default function CorrecaoPage() {
       const modoAnulacao = prova.modo_anulacao || 'contar_certa'
 
       if (prova.pesos_questoes) {
-        const pesos = prova.pesos_questoes.split(',').map(Number)
+        const pesosRaw = prova.pesos_questoes.split(',')
+        const pesos = Array.from({ length: numQuestoes }, (_, index) => {
+          const raw = pesosRaw[index]?.trim()
+          const parsed = Number(raw)
+          return raw !== undefined && raw !== '' && Number.isFinite(parsed) && parsed >= 0 ? parsed : 1
+        })
         let nota = 0
         const pesoTotal = pesos.reduce((s, p) => s + p, 0)
+        if (pesoTotal <= 0) return 0
 
         if (modoAnulacao === 'redistribuir') {
           let notaValidas = 0
@@ -219,6 +230,9 @@ export default function CorrecaoPage() {
       const gabArr = p.gabarito
         ? p.gabarito.split(',')
         : Array(p.num_questoes).fill('')
+      const tiposArr = p.tipos_questoes
+        ? p.tipos_questoes.split(',')
+        : []
 
       // Initialize dados
       const dadosInit: Record<number, DadosAluno> = {}
@@ -232,14 +246,25 @@ export default function CorrecaoPage() {
             const normalizedKey = key.startsWith('q') ? key : `q${key}`
             questoes[normalizedKey] = val
           }
-          const acertos = resultado.acertos ?? 0
-          const percentual = resultado.percentual ?? 0
+          const presenca = resultado.presenca ?? ''
+          const acertos = isPresente(presenca)
+            ? calcularAcertos(questoes, gabArr, p.modo_anulacao, tiposArr)
+            : 0
+          const percentual =
+            isPresente(presenca) && p.num_questoes > 0
+              ? Math.round((acertos / p.num_questoes) * 10000) / 100
+              : 0
+          const nota = presenca === 'F'
+            ? 0
+            : isPresente(presenca)
+              ? calcularNota(acertos, p.num_questoes, p, questoes)
+              : null
           dadosInit[aluno.id] = {
-            presenca: resultado.presenca ?? '',
+            presenca,
             questoes,
             acertos,
             percentual,
-            nota: resultado.nota,
+            nota,
           }
         } else {
           dadosInit[aluno.id] = {
@@ -432,6 +457,12 @@ export default function CorrecaoPage() {
             .reduce((sum, d) => sum + d.percentual, 0) / presentes
         )
       : 0
+  const mediaNota =
+    prova?.modo_avaliacao === 'nota' && presentes > 0
+      ? Object.values(dados)
+          .filter((d) => isPresente(d.presenca))
+          .reduce((sum, d) => sum + (d.nota ?? 0), 0) / presentes
+      : null
 
   if (loading) {
     return (
@@ -522,7 +553,10 @@ export default function CorrecaoPage() {
               </Badge>
             </div>
             <span className="font-semibold text-indigo-600">
-              Média: {mediaPercent}%
+              Média:{' '}
+              {mediaNota !== null && prova.nota_total
+                ? `${formatScore(mediaNota)}/${formatScore(prova.nota_total)} (${mediaPercent}%)`
+                : `${mediaPercent}%`}
             </span>
           </div>
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
@@ -606,6 +640,8 @@ export default function CorrecaoPage() {
               onToggleQuestao={handleToggleQuestao}
               tiposQuestoes={tiposQuestoesArr}
               criterioDiscursiva={prova.criterio_discursiva}
+              modoAvaliacao={prova.modo_avaliacao}
+              notaTotal={prova.nota_total}
             />
           )}
         </CardContent>

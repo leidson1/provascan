@@ -78,6 +78,13 @@ function syncTiposQuestoes(
   return next
 }
 
+function normalizePesosQuestoes(numQuestoes: number, pesosQuestoes: number[]) {
+  return Array.from({ length: numQuestoes }, (_, index) => {
+    const peso = pesosQuestoes[index]
+    return Number.isFinite(peso) && peso >= 0 ? peso : 1
+  })
+}
+
 function Dropdown({ label, value, options, onChange, disabled }: {
   label: string
   value: string
@@ -230,6 +237,10 @@ function ProvaModalInner({
     for (let i = 0; i < numQuestoes; i++) {
       if (finalTipos[i] === 'D' && gabArr[i] !== 'D') gabArr[i] = 'D'
     }
+    const finalPesos = normalizePesosQuestoes(numQuestoes, pesosQuestoes)
+    const shouldPersistPesos =
+      modoAvaliacao === 'nota' &&
+      (tipoProva === 'discursiva' || finalPesos.some((peso) => peso !== 1))
 
     const finalTurmaIds = editMode
       ? [turmaId]
@@ -252,7 +263,7 @@ function ProvaModalInner({
       modoAnulacao,
       tiposQuestoes: finalTipos,
       gabarito: gabArr.join(','),
-      pesosQuestoes,
+      pesosQuestoes: shouldPersistPesos ? finalPesos : [],
     })
   }
 
@@ -262,11 +273,17 @@ function ProvaModalInner({
   while (gabArr.length < numQuestoes) gabArr.push('')
   if (gabArr.length > numQuestoes) gabArr.length = numQuestoes
 
-  const pesArr = [...pesosQuestoes]
-  while (pesArr.length < numQuestoes) pesArr.push(1)
+  const pesArr = normalizePesosQuestoes(numQuestoes, pesosQuestoes)
 
   const tiposArr = syncTiposQuestoes(tipoProva, numQuestoes, tiposQuestoes)
   const filledCount = gabArr.filter((item) => item !== '').length
+  const pesoDiscursivas = pesArr
+    .slice(0, numQuestoes)
+    .filter((_, index) => tiposArr[index] === 'D')
+    .reduce((sum, value) => sum + (value || 0), 0)
+  const pesoTotal = pesArr
+    .slice(0, numQuestoes)
+    .reduce((sum, value) => sum + (value || 0), 0)
 
   function gabSelect(index: number, value: string) {
     const next = [...gabArr]
@@ -630,16 +647,22 @@ function ProvaModalInner({
                         type="number"
                         min={0}
                         step={0.5}
-                        value={pesArr[index] || ''}
+                        value={pesArr[index] ?? ''}
                         onChange={(event) => pesoChange(index, Number(event.target.value))}
                         className="ml-2 h-7 w-16 rounded-md border border-gray-200 bg-white text-center text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                        placeholder="pontos"
+                        placeholder="peso"
                       />
                     )}
                   </div>
                 )
               })}
             </div>
+
+            {tipoProva !== 'objetiva' && modoAvaliacao === 'nota' && (
+              <p className="text-[10px] leading-relaxed text-gray-400">
+                A Nota Total vale a prova inteira. Estes campos são pesos relativos das discursivas dentro dessa nota.
+              </p>
+            )}
 
             <div
               className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium ${
@@ -651,11 +674,9 @@ function ProvaModalInner({
               <span>{filledCount >= numQuestoes ? '✓' : '○'} {filledCount}/{numQuestoes} questões</span>
               {tipoProva !== 'objetiva' && (
                 <span>
-                  {pesArr
-                    .slice(0, numQuestoes)
-                    .filter((_, index) => tiposArr[index] === 'D')
-                    .reduce((sum, value) => sum + (value || 0), 0)
-                    .toFixed(1)} pontos
+                  {tipoProva === 'discursiva'
+                    ? `Nota total: ${pesoTotal.toFixed(1)} pts`
+                    : `Peso discursivas: ${pesoDiscursivas.toFixed(1)}`}
                 </span>
               )}
             </div>
