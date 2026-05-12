@@ -2223,21 +2223,37 @@ export class OMREngine {
       .sort((a, b) => a - b)
     const mediana = outros.length > 0 ? outros[Math.floor(outros.length / 2)] : 0
     const q3 = outros.length > 0 ? outros[Math.floor(outros.length * 0.75)] : mediana
+    const mediaOutros = outros.length > 0
+      ? outros.reduce((soma, valor) => soma + valor, 0) / outros.length
+      : 0
+    const desvioOutros = outros.length > 0
+      ? Math.sqrt(
+        outros.reduce((soma, valor) => soma + Math.pow(valor - mediaOutros, 2), 0) / outros.length
+      )
+      : 0
     const baseline = Math.max(mediana, q3 * 0.85, 0.02)
     const contrasteAbs = maxNivel - baseline
     const contrasteRel = baseline > 0 ? maxNivel / baseline : maxNivel / 0.02
+    const destaquePorDesvio = (maxNivel - mediaOutros) / Math.max(desvioOutros, 0.008)
 
-    const nearPeak = niveisQuestao.filter((valor) => valor >= Math.max(0.12, maxNivel - 0.06)).length
+    const nearPeak = niveisQuestao.filter((valor) =>
+      valor >= Math.max(0.07, maxNivel - Math.max(0.045, desvioOutros * 1.6))
+    ).length
     const secondaryStrong = secondMax >= Math.max(
       maxNivel * OMREngine.AMBIG_RATIO,
-      baseline + 0.05,
-      0.12
+      baseline + Math.max(0.032, desvioOutros * 1.8),
+      0.07
     )
     const hasStrongMark = maxNivel >= Math.max(
-      OMREngine.MIN_FILL * 0.62,
-      baseline + 0.035,
-      0.1
+      OMREngine.MIN_FILL * 0.5,
+      baseline + 0.026,
+      0.075
     )
+    const hasRelativeMark =
+      maxNivel >= Math.max(0.058, mediaOutros + Math.max(0.018, desvioOutros * 1.65)) &&
+      contrasteAbs >= 0.018 &&
+      contrasteRel >= 1.12 &&
+      destaquePorDesvio >= 1.75
 
     const resposta: OMRResposta = {
       questao,
@@ -2247,7 +2263,12 @@ export class OMREngine {
       status: 'vazia',
     }
 
-    if (!hasStrongMark || contrasteAbs < 0.032 || contrasteRel < 1.22) {
+    if (
+      !(hasStrongMark || hasRelativeMark) ||
+      contrasteAbs < 0.018 ||
+      contrasteRel < 1.12 ||
+      destaquePorDesvio < 1.55
+    ) {
       return resposta
     }
 
@@ -2291,7 +2312,7 @@ export class OMREngine {
         let cor: any
         if (resp.status === 'ok' && a === resp.niveis.indexOf(Math.max(...resp.niveis))) {
           cor = new cv.Scalar(0, 255, 0, 255)
-        } else if (nivel > OMREngine.MIN_FILL) {
+        } else if (nivel > OMREngine.MIN_FILL * 0.55) {
           cor = new cv.Scalar(255, 165, 0, 255)
         } else {
           cor = new cv.Scalar(128, 128, 128, 255)
@@ -2788,8 +2809,8 @@ export class OMREngine {
     const grayScore = this._nivelBolhaCinza(matGray, cx, cy, raio)
     const centerContrastScore = this._nivelBolhaContrasteCentro(paperGray, cx, cy, raio)
     const supportScore = binaryScore * 0.45 + grayScore * 0.55 + Math.max(0, grayScore - binaryScore) * 0.18
-    const cappedSupport = Math.min(supportScore, centerContrastScore + 0.16)
-    const combined = centerContrastScore * 0.72 + cappedSupport * 0.28
+    const cappedSupport = Math.min(supportScore, centerContrastScore + 0.24)
+    const combined = centerContrastScore * 0.62 + cappedSupport * 0.38
     return Math.max(0, Math.min(1, combined))
   }
 }
