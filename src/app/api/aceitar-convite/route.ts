@@ -61,13 +61,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Você já faz parte desta equipe' })
     }
 
-    // Adicionar com o papel definido no convite
+    // Adicionar com o papel definido no convite (whitelist: nunca 'dono' ou outro valor)
+    const allowedRoles = ['coordenador', 'corretor']
+    const memberRole = allowedRoles.includes(convite.role) ? convite.role : 'corretor'
+
     const { error: memberError } = await supabaseAdmin
       .from('workspace_members')
       .insert({
         workspace_id: convite.workspace_id,
         user_id: user.id,
-        role: convite.role || 'corretor',
+        role: memberRole,
       })
 
     if (memberError) {

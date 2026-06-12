@@ -30,6 +30,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email e workspace são obrigatórios' }, { status: 400 })
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (typeof email !== 'string' || !emailRegex.test(email.trim())) {
+      return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
+    }
+
     // Verificar que é dono do workspace
     const supabaseUser = await createServerClient()
     const { data: membership } = await supabaseUser

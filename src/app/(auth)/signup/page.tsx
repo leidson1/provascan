@@ -68,18 +68,28 @@ function SignUpForm() {
   useEffect(() => {
     if (!conviteToken) return;
 
-    const supabase = createClient();
-    supabase
-      .from("convites")
-      .select("email")
-      .eq("token", conviteToken)
-      .eq("usado", false)
-      .maybeSingle()
-      .then(({ data }: { data: { email: string } | null }) => {
-        if (!data) return;
-        setConviteInfo({ email: data.email });
-        setEmail(data.email);
-      });
+    let active = true;
+
+    async function fetchConviteInfo() {
+      const res = await fetch(
+        `/api/convite-info?token=${encodeURIComponent(conviteToken!)}`,
+      );
+      if (!res.ok) return;
+
+      const data: { email?: string } = await res.json();
+      if (!active || !data.email) return;
+
+      setConviteInfo({ email: data.email });
+      setEmail(data.email);
+    }
+
+    fetchConviteInfo().catch((error) => {
+      console.error("Erro ao buscar dados do convite:", error);
+    });
+
+    return () => {
+      active = false;
+    };
   }, [conviteToken]);
 
   async function handleSignUp(e: React.FormEvent) {
