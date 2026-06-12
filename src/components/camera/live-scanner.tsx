@@ -105,13 +105,22 @@ export function LiveScanner({ disabled = false, onCapture }: LiveScannerProps) {
       setPreviewWarnings(report.warnings)
     }
 
+    const SAMPLE_INTERVAL_MS = 700
+    let lastSampleAt = 0
+
     function scheduleSampling() {
       const video = videoRef.current
       if (!video || cancelled) return
 
       if (typeof video.requestVideoFrameCallback === 'function') {
         frameHandleRef.current = video.requestVideoFrameCallback(() => {
-          samplePreview(video)
+          // Throttle: o callback roda a cada frame (30-60fps), mas a amostra
+          // de qualidade so precisa rodar a cada ~700ms.
+          const now = performance.now()
+          if (now - lastSampleAt >= SAMPLE_INTERVAL_MS) {
+            lastSampleAt = now
+            samplePreview(video)
+          }
           scheduleSampling()
         })
         return
@@ -120,7 +129,7 @@ export function LiveScanner({ disabled = false, onCapture }: LiveScannerProps) {
       timeoutHandleRef.current = window.setTimeout(() => {
         samplePreview(video)
         scheduleSampling()
-      }, 700)
+      }, SAMPLE_INTERVAL_MS)
     }
 
     async function startCamera() {

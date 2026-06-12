@@ -355,6 +355,9 @@ export function OmrLab() {
       let baselineAnswers: string[] | null = null
 
       for (const scenario of DEFAULT_OMR_LAB_SCENARIOS) {
+        // Cede o event loop para a UI pintar ("Rodando...") entre cenarios.
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
         const scenarioCanvas = createScenarioCanvas(sourceCanvas, scenario)
         const result = engine.process(
           scenarioCanvas,

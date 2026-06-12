@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Bundled artifacts (public/opencv.js tem 7,6MB e estoura a memoria do ESLint)
+    "public/**",
+    // Artefatos locais do laboratorio OMR (gitignorado)
+    "output/**",
   ]),
 ]);
 

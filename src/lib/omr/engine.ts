@@ -8,7 +8,6 @@
 import {
   CARTAO,
   calcBolhaRaioVisual,
-  calcPosicoesBolhas,
   getOMRLayoutVariants,
   type BubblePosition,
   type CartaoOMRLayout,
@@ -132,6 +131,57 @@ declare global {
 
 // ── OMR Engine ─────────────────────────────────────────────
 
+// Promise singleton em escopo de módulo: garante que múltiplas instâncias
+// do engine compartilhem o mesmo carregamento do OpenCV.js (7,6MB).
+let opencvLoadPromise: Promise<void> | null = null
+
+function carregarOpenCVUmaVez(): Promise<void> {
+  if (typeof cv !== 'undefined' && cv.Mat) {
+    return Promise.resolve()
+  }
+  if (opencvLoadPromise) {
+    return opencvLoadPromise
+  }
+
+  opencvLoadPromise = new Promise<void>((resolve, reject) => {
+    const aguardarInicializacao = () => {
+      const check = setInterval(() => {
+        if (typeof cv !== 'undefined' && cv.Mat) {
+          clearInterval(check)
+          clearTimeout(timeoutHandle)
+          resolve()
+        }
+      }, 100)
+      const timeoutHandle = setTimeout(() => {
+        clearInterval(check)
+        reject(new Error('Timeout ao inicializar OpenCV'))
+      }, 60000)
+    }
+
+    // Se já existe uma tag script com esse src (outra instância injetou),
+    // apenas aguarda a inicialização ao invés de injetar de novo.
+    const existente = document.querySelector('script[src="/opencv.js"]')
+    if (existente) {
+      aguardarInicializacao()
+      return
+    }
+
+    const s1 = document.createElement('script')
+    s1.src = '/opencv.js'
+    s1.async = true
+    s1.onload = aguardarInicializacao
+    s1.onerror = () => reject(new Error('Erro ao carregar OpenCV.js'))
+    document.head.appendChild(s1)
+  })
+
+  // Em caso de falha, permite nova tentativa em chamadas futuras.
+  opencvLoadPromise.catch(() => {
+    opencvLoadPromise = null
+  })
+
+  return opencvLoadPromise
+}
+
 export class OMREngine {
   private static PX_MM = 4
   private static CARD_W = 840   // 210mm * 4
@@ -150,32 +200,8 @@ export class OMREngine {
 
     const promises: Promise<void>[] = []
 
-    // OpenCV.js
-    if (typeof cv !== 'undefined' && cv.Mat) {
-      // Already loaded
-    } else {
-      promises.push(
-        new Promise<void>((resolve, reject) => {
-          const s1 = document.createElement('script')
-          s1.src = '/opencv.js'
-          s1.async = true
-          s1.onload = () => {
-            const check = setInterval(() => {
-              if (typeof cv !== 'undefined' && cv.Mat) {
-                clearInterval(check)
-                resolve()
-              }
-            }, 100)
-            setTimeout(() => {
-              clearInterval(check)
-              reject(new Error('Timeout ao inicializar OpenCV'))
-            }, 60000)
-          }
-          s1.onerror = () => reject(new Error('Erro ao carregar OpenCV.js'))
-          document.head.appendChild(s1)
-        })
-      )
-    }
+    // OpenCV.js (carregamento idempotente entre instâncias)
+    promises.push(carregarOpenCVUmaVez())
 
     // jsQR
     if (window.jsQR) {
@@ -567,11 +593,15 @@ export class OMREngine {
     const qr = this._lerQRProgressivo(warped)
     const qrMs = this._now() - qrStartedAt
     const wGray = new cv.Mat()
+    let wNorm: any = null
 
     try {
       const bubbleStartedAt = this._now()
       cv.cvtColor(warped, wGray, cv.COLOR_RGBA2GRAY)
       const orientationScore = this._pontuarOrientador(wGray)
+      // Normalização de iluminação computada UMA vez por orientação e
+      // reutilizada nas etapas abaixo (resultado idêntico para o mesmo wGray).
+      wNorm = this._normalizarIluminacao(wGray)
       const variantesLayout = getOMRLayoutVariants(nq, nalts, tiposQuestoes, criterioDiscursiva)
       let melhorLeitura: {
         respostas: OMRResposta[]
@@ -581,15 +611,15 @@ export class OMREngine {
       } | null = null
 
       for (const variant of variantesLayout) {
-        const layoutTransform = this._estimarTransformacaoLayout(wGray, variant.cartao)
+        const layoutTransform = this._estimarTransformacaoLayout(wNorm, variant.cartao)
         const respostas = this._lerBolhasMista(
-          wGray,
+          wNorm,
           nq,
           letrasPerQ,
           variant,
           layoutTransform
         )
-        const structuralScore = this._pontuarEstruturaEsperada(wGray, variant)
+        const structuralScore = this._pontuarEstruturaEsperada(wGray, variant, wNorm)
         const score =
           this._pontuarAnalise(qr, respostas, expectedProvaId) +
           structuralScore +
@@ -654,6 +684,7 @@ export class OMREngine {
         },
       }
     } finally {
+      if (wNorm) wNorm.delete()
       wGray.delete()
     }
   }
@@ -822,7 +853,8 @@ export class OMREngine {
 
   private _pontuarEstruturaEsperada(
     wGray: any,
-    variant: OMRLayoutVariant
+    variant: OMRLayoutVariant,
+    wNorm: any
   ): number {
     const px = OMREngine.PX_MM
     const C = variant.cartao
@@ -861,11 +893,11 @@ export class OMREngine {
       Math.max(1, Math.min(wGray.rows - Math.max(0, minY), maxY - Math.max(0, minY)))
     )
 
-    const normalized = this._normalizarIluminacao(wGray)
+    // wNorm é o wGray já normalizado (computado e gerenciado pelo chamador).
     const bin = new cv.Mat()
 
     try {
-      cv.threshold(normalized, bin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+      cv.threshold(wNorm, bin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
       const qrDensity = this._densidadeRegiao(bin, qrRect)
       const gridDensity = this._densidadeRegiao(bin, gridRect)
 
@@ -874,7 +906,6 @@ export class OMREngine {
 
       return qrScore + gridScore
     } finally {
-      normalized.delete()
       bin.delete()
     }
   }
@@ -921,7 +952,7 @@ export class OMREngine {
     return maxScore * (1 - desvio / tolerancia)
   }
 
-  private _estimarTransformacaoLayout(wGray: any, cartao: CartaoOMRLayout = CARTAO): LayoutTransform | null {
+  private _estimarTransformacaoLayout(wNorm: any, cartao: CartaoOMRLayout = CARTAO): LayoutTransform | null {
     const px = OMREngine.PX_MM
     const mc = Math.round((cartao.margem + cartao.marcador / 2) * px)
     const rc = Math.round((cartao.largura - cartao.margem - cartao.marcador / 2) * px)
@@ -933,12 +964,12 @@ export class OMREngine {
       br: { x: rc, y: bc },
     }
 
-    const normalized = this._normalizarIluminacao(wGray)
+    // wNorm é o cinza já normalizado (computado e gerenciado pelo chamador).
     const bin = new cv.Mat()
     const halfWindow = Math.round(20 * px)
 
     try {
-      cv.threshold(normalized, bin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
+      cv.threshold(wNorm, bin, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
 
       const tl = this._localizarMarcadorEsperado(bin, expected.tl, halfWindow, cartao)
       const tr = this._localizarMarcadorEsperado(bin, expected.tr, halfWindow, cartao)
@@ -981,7 +1012,6 @@ export class OMREngine {
       if (rawMatrix.length !== 9) return null
       return { matrix: rawMatrix }
     } finally {
-      normalized.delete()
       bin.delete()
     }
   }
@@ -1211,11 +1241,10 @@ export class OMREngine {
     return corrected
   }
 
-  private _prepararCinzaBolhas(wGray: any): any {
-    const normalized = this._normalizarIluminacao(wGray)
+  private _prepararCinzaBolhas(wNorm: any): any {
+    // wNorm é o cinza já normalizado (computado e gerenciado pelo chamador).
     const prepared = new cv.Mat()
-    cv.GaussianBlur(normalized, prepared, new cv.Size(3, 3), 0)
-    normalized.delete()
+    cv.GaussianBlur(wNorm, prepared, new cv.Size(3, 3), 0)
     return prepared
   }
 
@@ -2083,7 +2112,7 @@ export class OMREngine {
   // ── LEITURA DE BOLHAS (MISTA) ─────────────────────────────
 
   private _lerBolhasMista(
-    wGray: any,
+    wNorm: any,
     nq: number,
     letrasPerQ: string[][],
     variant: OMRLayoutVariant,
@@ -2092,7 +2121,7 @@ export class OMREngine {
     const pontosAmostra = this._mapearPosicoesBolhas(variant.posicoes, layoutTransform)
     const raio = this._raioAmostraBolhas(variant, 0.75)
 
-    const preparedGray = this._prepararCinzaBolhas(wGray)
+    const preparedGray = this._prepararCinzaBolhas(wNorm)
     const inkGray = this._realcarMarcasBolhas(preparedGray)
     try {
       const wBin1 = this._criarMascaraBolhas(preparedGray, cv.ADAPTIVE_THRESH_GAUSSIAN_C, 15, 8)
@@ -2278,7 +2307,14 @@ export class OMREngine {
       return resposta
     }
 
-    resposta.marcada = letras[maxIdx] ?? null
+    const letraMarcada = letras[maxIdx] ?? null
+    if (letraMarcada == null) {
+      // Sem letra correspondente ao índice marcado (ex.: mais alternativas que letras):
+      // mantém o status de "sem leitura" ao invés de 'ok' com marcada null.
+      return resposta
+    }
+
+    resposta.marcada = letraMarcada
     resposta.confianca = Math.max(
       0,
       Math.min(1, maxNivel * 0.55 + Math.max(0, contrasteAbs) * 2.8 + Math.max(0, contrasteRel - 1) * 0.18)
@@ -2349,258 +2385,6 @@ export class OMREngine {
         status: respostas[q].status,
       }
       for (let a = 0; a < respostas[q].niveis.length; a++) {
-        row.niveis.push(Math.round(respostas[q].niveis[a] * 100))
-      }
-      rawLevels.push(row)
-    }
-
-    return { imageUrl: dataUrl, levels: rawLevels }
-  }
-
-  // ── LEITURA DE BOLHAS (legado) ──────────────────────────────
-
-  private _lerBolhas(wGray: any, nq: number, nalts: number, letras: string[]): OMRResposta[] {
-    const posicoes = calcPosicoesBolhas(nq, nalts)
-    // Raio menor (0.75x) para amostrar o CENTRO da bolha, evitando a borda preta
-    const raio = this._raioAmostraBolhas(nq, nalts, 0.75)
-
-    // Leitura principal: adaptive gaussian
-    const wBin1 = new cv.Mat()
-    cv.adaptiveThreshold(
-      wGray, wBin1, 255,
-      cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 8
-    )
-    const leitura1 = this._lerBolhasUmaVez(wBin1, posicoes, nq, nalts, raio)
-    wBin1.delete()
-
-    // Verificar se tem questões com baixa confiança
-    let precisaFallback = false
-    for (let q = 0; q < nq; q++) {
-      let maxN = 0
-      for (let a = 0; a < nalts; a++) {
-        if (leitura1[q][a] > maxN) maxN = leitura1[q][a]
-      }
-      if (maxN < OMREngine.MIN_FILL * 1.5) {
-        precisaFallback = true
-        break
-      }
-    }
-
-    if (!precisaFallback) {
-      return this._decidirRespostas(leitura1, nq, nalts, letras)
-    }
-
-    // Fallback: segunda leitura com parâmetros diferentes + votação
-    const wBin2 = new cv.Mat()
-    cv.adaptiveThreshold(
-      wGray, wBin2, 255,
-      cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 21, 6
-    )
-    const leitura2 = this._lerBolhasUmaVez(wBin2, posicoes, nq, nalts, raio)
-    wBin2.delete()
-
-    // Combinar leituras 1 e 2
-    const combinado: number[][] = []
-    for (let q = 0; q < nq; q++) {
-      const niveis: number[] = []
-      for (let a = 0; a < nalts; a++) {
-        niveis.push((leitura1[q][a] + leitura2[q][a]) / 2)
-      }
-      combinado.push(niveis)
-    }
-
-    // Verificar se ainda há muitas ambiguidades
-    const resultado = this._decidirRespostas(combinado, nq, nalts, letras)
-    let ambiguas = 0
-    for (let q = 0; q < resultado.length; q++) {
-      if (resultado[q].status === 'ambigua' || resultado[q].status === 'vazia') ambiguas++
-    }
-
-    // Fallback 2: se >30% ambíguas, tentar com kernel/blockSize diferentes
-    if (ambiguas > nq * 0.3) {
-      const wBin3 = new cv.Mat()
-      cv.adaptiveThreshold(
-        wGray, wBin3, 255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 5
-      )
-      const leitura3 = this._lerBolhasUmaVez(wBin3, posicoes, nq, nalts, raio)
-      wBin3.delete()
-
-      // Votação de 3 leituras
-      const triplo: number[][] = []
-      for (let q = 0; q < nq; q++) {
-        const niveis: number[] = []
-        for (let a = 0; a < nalts; a++) {
-          niveis.push((leitura1[q][a] + leitura2[q][a] + leitura3[q][a]) / 3)
-        }
-        triplo.push(niveis)
-      }
-      return this._decidirRespostas(triplo, nq, nalts, letras)
-    }
-
-    return resultado
-  }
-
-  private _lerBolhasUmaVez(
-    matBin: any,
-    posicoes: BubblePosition[][],
-    nq: number,
-    nalts: number,
-    raio: number
-  ): number[][] {
-    const resultados: number[][] = []
-    for (let q = 0; q < nq; q++) {
-      const niveis: number[] = []
-      for (let a = 0; a < nalts; a++) {
-        const cx = Math.round(posicoes[q][a].cx * OMREngine.PX_MM)
-        const cy = Math.round(posicoes[q][a].cy * OMREngine.PX_MM)
-        niveis.push(this._nivelBolha(matBin, cx, cy, raio))
-      }
-      resultados.push(niveis)
-    }
-    return resultados
-  }
-
-  private _decidirRespostas(
-    niveis: number[][],
-    nq: number,
-    nalts: number,
-    letras: string[]
-  ): OMRResposta[] {
-    const respostas: OMRResposta[] = []
-
-    for (let q = 0; q < nq; q++) {
-      // Ordenar níveis para análise relativa
-      const sorted: { idx: number; val: number }[] = []
-      for (let a = 0; a < nalts; a++) {
-        sorted.push({ idx: a, val: niveis[q][a] })
-      }
-      sorted.sort((a, b) => b.val - a.val)
-
-      const maxNivel = sorted[0].val
-      const maxIdx = sorted[0].idx
-      const secondMax = sorted[1].val
-
-      // Calcular mediana das alternativas não-max (baseline da questão)
-      const outros: number[] = []
-      for (let a = 1; a < nalts; a++) outros.push(sorted[a].val)
-      outros.sort((a, b) => a - b)
-      const mediana = outros[Math.floor(outros.length / 2)]
-
-      const resp: OMRResposta = {
-        questao: q + 1,
-        niveis: niveis[q],
-        marcada: null,
-        confianca: 0,
-        status: 'vazia',
-      }
-
-      // Decisão RELATIVA: o que importa é a diferença entre max e os demais
-      const destaque = mediana > 0 ? maxNivel / mediana : (maxNivel > 0.05 ? 10 : 0)
-
-      // Contar quantas bolhas têm preenchimento significativo (acima do baseline)
-      const threshAlto = mediana > 0 ? mediana * 1.8 : 0.10
-      let bolhasAltas = 0
-      for (let a = 0; a < nalts; a++) {
-        if (niveis[q][a] >= threshAlto && niveis[q][a] >= 0.10) {
-          bolhasAltas++
-        }
-      }
-
-      if (destaque < 1.3) {
-        // Todas as bolhas têm nível similar -> nenhuma marcada (vazia)
-        resp.marcada = null
-        resp.confianca = 0
-        resp.status = 'vazia'
-      } else if (bolhasAltas >= 2 && secondMax > maxNivel * 0.55) {
-        // Duas ou mais bolhas preenchidas significativamente -> dupla marcação
-        resp.marcada = 'DUPLA'
-        resp.confianca = 0
-        resp.status = 'ambigua'
-      } else {
-        // Uma bolha se destaca claramente
-        resp.marcada = letras[maxIdx]
-        resp.confianca = maxNivel
-        resp.status = 'ok'
-      }
-
-      respostas.push(resp)
-    }
-
-    return respostas
-  }
-
-  // ── DEBUG: gera imagem anotada + dados diagnósticos ──
-
-  private _gerarDebug(
-    warped: any,
-    wGray: any,
-    nq: number,
-    nalts: number,
-    respostas: OMRResposta[]
-  ): { imageUrl: string; levels: DebugLevel[] } {
-    const px = OMREngine.PX_MM
-    const posicoes = calcPosicoesBolhas(nq, nalts)
-    const raio = this._raioAmostraBolhas(nq, nalts, 1.1)
-    const allLetras = ['A', 'B', 'C', 'D', 'E']
-
-    // Criar cópia colorida para anotar
-    const debug = warped.clone()
-
-    // Desenhar círculo em cada posição de bolha
-    for (let q = 0; q < nq; q++) {
-      const resp = respostas[q]
-      for (let a = 0; a < nalts; a++) {
-        const cx = Math.round(posicoes[q][a].cx * px)
-        const cy = Math.round(posicoes[q][a].cy * px)
-        const nivel = resp.niveis[a]
-        const nivelPct = Math.round(nivel * 100)
-
-        // Cor: verde se marcada correta, laranja se tem preenchimento, cinza se vazia
-        let cor: any
-        if (resp.status === 'ok' && resp.marcada === allLetras[a]) {
-          cor = new cv.Scalar(0, 255, 0, 255) // verde
-        } else if (nivel > OMREngine.MIN_FILL) {
-          cor = new cv.Scalar(255, 165, 0, 255) // laranja
-        } else {
-          cor = new cv.Scalar(128, 128, 128, 255) // cinza
-        }
-
-        cv.circle(debug, new cv.Point(cx, cy), raio, cor, 2)
-
-        // Texto com percentual de preenchimento
-        cv.putText(
-          debug,
-          nivelPct + '%',
-          new cv.Point(cx - 12, cy - raio - 3),
-          cv.FONT_HERSHEY_SIMPLEX,
-          0.35,
-          cor,
-          1
-        )
-      }
-    }
-
-    // Converter para data URL
-    const tmpCanvas = document.createElement('canvas')
-    tmpCanvas.width = debug.cols
-    tmpCanvas.height = debug.rows
-    cv.imshow(tmpCanvas, debug)
-    const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.8)
-    tmpCanvas.width = 0
-    tmpCanvas.height = 0
-    debug.delete()
-
-    // Coletar níveis brutos para diagnóstico
-    const rawLevels: DebugLevel[] = []
-    for (let q = 0; q < nq; q++) {
-      const row: DebugLevel = {
-        q: q + 1,
-        niveis: [],
-        marcada: respostas[q].marcada || '-',
-        status: respostas[q].status,
-      }
-      for (let a = 0; a < nalts; a++) {
         row.niveis.push(Math.round(respostas[q].niveis[a] * 100))
       }
       rawLevels.push(row)
