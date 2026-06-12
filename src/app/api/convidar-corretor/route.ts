@@ -67,9 +67,7 @@ export async function POST(request: Request) {
     }
 
     if (existingUser) {
-      // ── CENÁRIO 1: Usuário já existe ──
-
-      // Verificar se já é membro
+      // Usuário já existe: só verificar se já faz parte da equipe
       const { data: existingMember } = await supabaseAdmin
         .from('workspace_members')
         .select('id')
@@ -80,72 +78,62 @@ export async function POST(request: Request) {
       if (existingMember) {
         return NextResponse.json({ error: 'Este professor já faz parte da equipe' }, { status: 409 })
       }
+    }
 
-      // Adicionar ao workspace
-      const { error: memberError } = await supabaseAdmin
-        .from('workspace_members')
-        .insert({
-          workspace_id: workspaceId,
-          user_id: existingUser.id,
-          role: memberRole,
-        })
+    // Sempre gerar convite — inclusive para quem já tem conta: entrar numa
+    // equipe exige o aceite do próprio professor (a API de aceite valida que o
+    // e-mail do convite é o do usuário logado). Quem já tem conta recebe link
+    // de login; quem não tem, de cadastro.
+    const origin = request.headers.get('origin') || ''
+    const linkBase = existingUser ? '/login' : '/signup'
+    const usuarioInfo = existingUser
+      ? { nome: existingUser.nome, email: existingUser.email }
+      : undefined
 
-      if (memberError) {
-        return NextResponse.json({ error: 'Erro ao adicionar: ' + memberError.message }, { status: 500 })
-      }
+    // Verificar se já existe convite pendente para esse email nesse workspace
+    const { data: existingInvite } = await supabaseAdmin
+      .from('convites')
+      .select('id, token')
+      .eq('workspace_id', workspaceId)
+      .eq('email', email.trim().toLowerCase())
+      .eq('usado', false)
+      .maybeSingle()
 
-      return NextResponse.json({
-        success: true,
-        tipo: 'adicionado',
-        user: { nome: existingUser.nome, email: existingUser.email },
-      })
-    } else {
-      // ── CENÁRIO 2: Usuário não existe → gerar convite ──
-
-      // Verificar se já existe convite pendente para esse email nesse workspace
-      const { data: existingInvite } = await supabaseAdmin
-        .from('convites')
-        .select('id, token')
-        .eq('workspace_id', workspaceId)
-        .eq('email', email.trim().toLowerCase())
-        .eq('usado', false)
-        .maybeSingle()
-
-      if (existingInvite) {
-        // Retornar o convite existente
-        const origin = request.headers.get('origin') || ''
-        return NextResponse.json({
-          success: true,
-          tipo: 'convite',
-          token: existingInvite.token,
-          link: `${origin}/signup?convite=${existingInvite.token}`,
-        })
-      }
-
-      // Criar novo convite
-      const token = gerarToken()
-      const { error: inviteError } = await supabaseAdmin
-        .from('convites')
-        .insert({
-          workspace_id: workspaceId,
-          email: email.trim().toLowerCase(),
-          token,
-          criado_por: caller.id,
-          role: memberRole,
-        })
-
-      if (inviteError) {
-        return NextResponse.json({ error: 'Erro ao criar convite: ' + inviteError.message }, { status: 500 })
-      }
-
-      const origin = request.headers.get('origin') || ''
+    if (existingInvite) {
       return NextResponse.json({
         success: true,
         tipo: 'convite',
-        token,
-        link: `${origin}/signup?convite=${token}`,
+        jaTemConta: !!existingUser,
+        user: usuarioInfo,
+        token: existingInvite.token,
+        link: `${origin}${linkBase}?convite=${existingInvite.token}`,
       })
     }
+
+    // Criar novo convite
+    const token = gerarToken()
+    const { error: inviteError } = await supabaseAdmin
+      .from('convites')
+      .insert({
+        workspace_id: workspaceId,
+        email: email.trim().toLowerCase(),
+        token,
+        criado_por: caller.id,
+        role: memberRole,
+      })
+
+    if (inviteError) {
+      return NextResponse.json({ error: 'Erro ao criar convite: ' + inviteError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      tipo: 'convite',
+      jaTemConta: !!existingUser,
+      user: usuarioInfo,
+      token,
+      link: `${origin}${linkBase}?convite=${token}`,
+    })
   } catch (err) {
     console.error('Erro ao convidar corretor:', err)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })

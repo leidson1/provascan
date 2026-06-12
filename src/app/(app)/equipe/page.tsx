@@ -50,10 +50,10 @@ export default function EquipePage() {
   const [formRole, setFormRole] = useState<'coordenador' | 'corretor'>('corretor')
   const [inviting, setInviting] = useState(false)
   const [inviteResult, setInviteResult] = useState<{
-    tipo: 'adicionado' | 'convite'
     nome?: string
     email?: string
     link?: string
+    jaTemConta?: boolean
   } | null>(null)
 
   // Remove dialog
@@ -160,19 +160,17 @@ export default function EquipePage() {
       }
 
       setInviteResult({
-        tipo: data.tipo,
         nome: data.user?.nome,
         email: data.user?.email || formEmail.trim().toLowerCase(),
         link: data.link,
+        jaTemConta: data.jaTemConta,
       })
 
-      if (data.tipo === 'adicionado') {
-        toast.success('Professor adicionado com sucesso!', {
-          description: 'Nenhum e-mail foi enviado. Se ele nao lembrar a senha, deve usar a recuperacao no login.',
-        })
-      } else {
-        toast.success('Convite gerado!')
-      }
+      toast.success('Convite gerado!', {
+        description: data.jaTemConta
+          ? 'Este professor já tem conta — envie o link para ele entrar e aceitar.'
+          : undefined,
+      })
 
       fetchMembers()
       fetchConvites()
@@ -351,57 +349,44 @@ export default function EquipePage() {
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{inviteResult ? (inviteResult.tipo === 'adicionado' ? 'Professor Adicionado!' : 'Convite Gerado!') : 'Convidar Professor'}</DialogTitle>
+            <DialogTitle>{inviteResult ? 'Convite Gerado!' : 'Convidar Professor'}</DialogTitle>
             <DialogDescription>
               {inviteResult
-                ? (inviteResult.tipo === 'adicionado'
-                  ? 'Este e-mail ja tinha conta. O acesso ao workspace foi liberado sem envio de convite por e-mail.'
+                ? (inviteResult.jaTemConta
+                  ? `Este e-mail já tem conta no ProvaScan${inviteResult.nome ? ` (${inviteResult.nome})` : ''}. Envie o link — o professor faz login e entra na equipe.`
                   : 'Envie o link abaixo por WhatsApp para o professor.')
                 : 'Digite o email do professor que deseja convidar.'}
             </DialogDescription>
           </DialogHeader>
 
           {inviteResult ? (
-            inviteResult.tipo === 'adicionado' ? (
-              /* ── Adicionado direto ── */
-              <div className="space-y-4">
-                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-center">
-                  <p className="text-sm text-emerald-700">
-                    <strong>{inviteResult.nome || inviteResult.email}</strong> foi adicionado(a) como corretor(a).
-                    Ao entrar no ProvaScan, este workspace ficara disponivel no seletor. Se nao lembrar a senha, use &quot;Esqueci minha senha&quot;.
+            /* ── Link de convite ── */
+            <div className="space-y-4">
+              <div className="rounded-xl bg-indigo-50 border border-indigo-200 p-4 space-y-3">
+                <div>
+                  <span className="text-[11px] font-medium text-indigo-500 uppercase tracking-wide">Email convidado</span>
+                  <p className="text-sm font-semibold text-gray-900 mt-0.5">{inviteResult.email}</p>
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-indigo-500 uppercase tracking-wide">
+                    {inviteResult.jaTemConta ? 'Link de acesso' : 'Link de cadastro'}
+                  </span>
+                  <p className="mt-1 rounded-lg bg-white border border-indigo-100 px-3 py-2.5 text-xs text-gray-600 font-mono break-all select-all">
+                    {inviteResult.link}
                   </p>
                 </div>
-                <DialogFooter>
-                  <Button onClick={() => setInviteOpen(false)} className="w-full">Fechar</Button>
-                </DialogFooter>
               </div>
-            ) : (
-              /* ── Link de convite ── */
-              <div className="space-y-4">
-                <div className="rounded-xl bg-indigo-50 border border-indigo-200 p-4 space-y-3">
-                  <div>
-                    <span className="text-[11px] font-medium text-indigo-500 uppercase tracking-wide">Email convidado</span>
-                    <p className="text-sm font-semibold text-gray-900 mt-0.5">{inviteResult.email}</p>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-medium text-indigo-500 uppercase tracking-wide">Link de cadastro</span>
-                    <p className="mt-1 rounded-lg bg-white border border-indigo-100 px-3 py-2.5 text-xs text-gray-600 font-mono break-all select-all">
-                      {inviteResult.link}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => copyInviteLink(inviteResult.link!)}
-                  className="w-full gap-2"
-                >
-                  <Copy className="h-4 w-4" />
-                  Copiar convite para WhatsApp
-                </Button>
-                <Button variant="outline" onClick={() => setInviteOpen(false)} className="w-full">
-                  Fechar
-                </Button>
-              </div>
-            )
+              <Button
+                onClick={() => copyInviteLink(inviteResult.link!)}
+                className="w-full gap-2"
+              >
+                <Copy className="h-4 w-4" />
+                Copiar convite para WhatsApp
+              </Button>
+              <Button variant="outline" onClick={() => setInviteOpen(false)} className="w-full">
+                Fechar
+              </Button>
+            </div>
           ) : (
             /* ── Formulário ── */
             <div className="space-y-4">
@@ -428,7 +413,7 @@ export default function EquipePage() {
               </div>
               <div>
                 <p className="text-[11px] text-gray-400">
-                  Se o professor ja tiver conta, ele sera adicionado direto e nao recebera e-mail automatico. Se nao tiver, um link de convite sera gerado.
+                  Um link de convite será gerado para você enviar (WhatsApp, por exemplo). O professor entra na conta dele — ou cria uma nova — e passa a fazer parte da equipe.
                 </p>
               </div>
               <DialogFooter>
