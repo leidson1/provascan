@@ -43,7 +43,7 @@ interface Disciplina {
 
 export default function DisciplinasPage() {
   const supabase = createClient()
-  const { workspaceId, role } = useWorkspace()
+  const { workspaceId } = useWorkspace()
   const isGestor = useIsGestor()
   const isCorretor = !isGestor
   const [disciplinas, setDisciplinas] = useState<Disciplina[]>([])
@@ -84,7 +84,7 @@ export default function DisciplinasPage() {
     } finally {
       setLoading(false)
     }
-  }, [workspaceId])
+  }, [supabase, workspaceId])
 
   useEffect(() => {
     fetchDisciplinas()

@@ -23,14 +23,16 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import { AnswerKeyEditor } from '@/components/answer-key-editor'
 import type { Prova } from '@/types/database'
 import { useWorkspace } from '@/contexts/workspace-context'
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '\u2014'
-  return new Date(dateStr).toLocaleDateString('pt-BR')
+  // Data pura (YYYY-MM-DD) seria meia-noite UTC e exibiria 1 dia a menos no
+  // Brasil; o T12:00:00 ancora no fuso local (mesmo padr\u00e3o das outras p\u00e1ginas).
+  const normalized = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`
+  return new Date(normalized).toLocaleDateString('pt-BR')
 }
 
 function statusBadge(status: string) {
@@ -90,7 +92,7 @@ export default function ProvaDetailPage() {
     }
 
     fetchProva()
-  }, [provaId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [provaId, workspaceId, supabase])
 
   async function handleSaveGabarito() {
     setSaving(true)

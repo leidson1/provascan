@@ -64,7 +64,7 @@ export default function AlunosPage() {
   const params = useParams()
   const turmaId = params.id as string
   const supabase = createClient()
-  const { workspaceId, role } = useWorkspace()
+  const { workspaceId } = useWorkspace()
   const isGestor = useIsGestor()
   const isCorretor = !isGestor
 
@@ -87,14 +87,17 @@ export default function AlunosPage() {
         .from('turmas')
         .select('id, serie, turma')
         .eq('id', turmaId)
+        // Mesmo padrão das páginas provas/[id]: não abrir turma de outro workspace
+        .eq('workspace_id', workspaceId)
         .single()
 
       if (error) throw error
       setTurma(data)
     } catch {
-      toast.error('Erro ao carregar dados da turma.')
+      setTurma(null)
+      toast.error('Turma não encontrada neste workspace')
     }
-  }, [turmaId])
+  }, [supabase, turmaId, workspaceId])
 
   const fetchAlunos = useCallback(async () => {
     try {
@@ -112,7 +115,7 @@ export default function AlunosPage() {
     } finally {
       setLoading(false)
     }
-  }, [turmaId])
+  }, [supabase, turmaId])
 
   useEffect(() => {
     fetchTurma()

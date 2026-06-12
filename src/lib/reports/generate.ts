@@ -156,9 +156,12 @@ function gerarRelatorioPorTurma(data: ReportData, filters: ReportFilters, format
     const mediaPercent = presentes.length > 0
       ? presentes.reduce((s, r) => s + (r.percentual ?? 0), 0) / presentes.length
       : 0
-    const mediaNota = presentes.length > 0
-      ? presentes.reduce((s, r) => s + (r.nota ?? r.acertos ?? 0), 0) / presentes.length
-      : 0
+    // Só resultados de provas modo 'nota' entram na "Média Nota": misturar com
+    // acertos (escala 0–N) somaria grandezas incomparáveis na mesma média.
+    const comNota = presentes.filter(r => r.nota != null)
+    const mediaNota = comNota.length > 0
+      ? comNota.reduce((s, r) => s + (r.nota ?? 0), 0) / comNota.length
+      : null
 
     return {
       numero: aluno.numero ?? 0,
@@ -166,7 +169,7 @@ function gerarRelatorioPorTurma(data: ReportData, filters: ReportFilters, format
       provasFeitas: presentes.length,
       faltas,
       mediaPercent: Math.round(mediaPercent * 10) / 10,
-      mediaNota: Math.round(mediaNota * 10) / 10,
+      mediaNota: mediaNota === null ? null : Math.round(mediaNota * 10) / 10,
     }
   }).sort((a, b) => a.numero - b.numero)
 
@@ -195,7 +198,7 @@ function gerarRelatorioPorTurma(data: ReportData, filters: ReportFilters, format
       String(r.provasFeitas),
       String(r.faltas),
       `${r.mediaPercent}%`,
-      String(r.mediaNota),
+      r.mediaNota === null ? '—' : String(r.mediaNota),
     ])
 
     addPdfTable(doc, headers, rows, y, colWidths)

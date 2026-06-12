@@ -61,6 +61,16 @@ export function WorkspaceProvider({ userId, children }: Props) {
   const [memberships, setMemberships] = useState<MembershipWithWorkspace[]>([])
   const [currentWsId, setCurrentWsId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  // Espelho em estado do localStorage de "vistos": writes diretos no storage não
+  // re-renderizam, então o badge de novos workspaces não sumiria ao abrir o menu.
+  const [seenIds, setSeenIds] = useState<number[] | null>(() =>
+    typeof window === 'undefined' ? null : readSeenWorkspaceIds()
+  )
+
+  const updateSeenWorkspaceIds = useCallback((ids: number[]) => {
+    writeSeenWorkspaceIds(ids)
+    setSeenIds(Array.from(new Set(ids)))
+  }, [])
 
   const applyMemberships = useCallback((typed: MembershipWithWorkspace[]) => {
     setMemberships(typed)
@@ -82,7 +92,7 @@ export function WorkspaceProvider({ userId, children }: Props) {
       const newestInvite = unseenInvites[0]
       setCurrentWsId(newestInvite.workspace_id)
       localStorage.setItem(STORAGE_KEY, String(newestInvite.workspace_id))
-      writeSeenWorkspaceIds([...seenIds, newestInvite.workspace_id])
+      updateSeenWorkspaceIds([...seenIds, newestInvite.workspace_id])
       return
     }
 
@@ -95,7 +105,7 @@ export function WorkspaceProvider({ userId, children }: Props) {
     const first = owned || typed[0]
     setCurrentWsId(first.workspace_id)
     localStorage.setItem(STORAGE_KEY, String(first.workspace_id))
-  }, [])
+  }, [updateSeenWorkspaceIds])
 
   const fetchMemberships = useCallback(async () => {
     const typed = await loadMembershipsData(supabase, userId)
@@ -151,15 +161,43 @@ export function WorkspaceProvider({ userId, children }: Props) {
   }, [currentWsId, fetchMemberships, memberships, supabase, userId])
 
   const newWorkspacesCount = useMemo(() => {
-    if (typeof window === 'undefined') return 0
-    const seen = readSeenWorkspaceIds()
-    return memberships.filter((membership) => !seen.includes(membership.workspace_id)).length
-  }, [memberships])
+    // Só convites (não o workspace próprio do dono) contam como "novos",
+    // espelhando o critério de unseenInvites em applyMemberships.
+    if (seenIds === null) return 0
+    return memberships.filter(
+      (membership) => membership.role !== 'dono' && !seenIds.includes(membership.workspace_id)
+    ).length
+  }, [memberships, seenIds])
 
   const markAllSeen = useCallback(() => {
     const ids = memberships.map((membership) => membership.workspace_id)
-    writeSeenWorkspaceIds(ids)
-  }, [memberships])
+    updateSeenWorkspaceIds(ids)
+  }, [memberships, updateSeenWorkspaceIds])
+
+  // Sem nenhum workspace (trigger de criação falhou ou ainda não rodou): mostrar
+  // erro com retry em vez de um spinner eterno.
+  if (!loading && memberships.length === 0) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-sm font-medium text-gray-900">
+          Não foi possível carregar seu espaço de trabalho.
+        </p>
+        <p className="max-w-sm text-sm text-gray-500">
+          Sua conta ainda não tem um workspace associado. Tente novamente em alguns
+          segundos; se o problema continuar, entre em contato com o suporte.
+        </p>
+        <button
+          onClick={() => {
+            setLoading(true)
+            void fetchMemberships()
+          }}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    )
+  }
 
   if (loading || !currentWsId) {
     return (

@@ -73,7 +73,7 @@ export default function EstatisticasPage() {
     }
 
     fetchData()
-  }, [provaId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [provaId, workspaceId, supabase])
 
   if (loading) {
     return (
@@ -188,13 +188,6 @@ export default function EstatisticasPage() {
   const questoesFaceis = questaoStats.filter(
     (q) => !q.anulada && q.percentAcerto >= 80
   )
-
-  function barColor(percent: number, anulada: boolean) {
-    if (anulada) return 'bg-amber-400'
-    if (percent >= 80) return 'bg-green-500'
-    if (percent >= 40) return 'bg-yellow-500'
-    return 'bg-red-500'
-  }
 
   function medalIcon(position: number) {
     if (position === 0)

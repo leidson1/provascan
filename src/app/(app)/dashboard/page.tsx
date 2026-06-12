@@ -44,6 +44,8 @@ interface RecentProva {
   data: string | null
   status: 'aberta' | 'corrigida' | 'excluida'
   prova_origem_id: number | null
+  tipo_vinculo: string | null
+  alunos_selecionados: number[] | null
   turma_id: number | null
   disciplina: { nome: string } | null
   turma: { serie: string; turma: string } | null
@@ -174,7 +176,7 @@ export default function DashboardPage() {
             .eq('workspace_id', workspaceId),
           // Recent provas
           supabase.from('provas')
-            .select('id, data, status, prova_origem_id, turma_id, disciplina:disciplinas(nome), turma:turmas(serie, turma)')
+            .select('id, data, status, prova_origem_id, tipo_vinculo, alunos_selecionados, turma_id, disciplina:disciplinas(nome), turma:turmas(serie, turma)')
             .eq('workspace_id', workspaceId).neq('status', 'excluida')
             .order('created_at', { ascending: false }).limit(5),
           // Resultados for progress + activity
@@ -227,9 +229,13 @@ export default function DashboardPage() {
           ...p,
           resultados_count: resCounts[p.id] || 0,
           faltas_count: faltaCounts[p.id] || 0,
-          alunos_count: p.prova_origem_id
-            ? (faltaCounts[p.prova_origem_id] || 0)
-            : (p.turma_id ? (alunoCounts[p.turma_id] || 0) : 0),
+          // Denominador do progresso: recuperação corrige os alunos selecionados;
+          // 2ª chamada corrige os ausentes da prova original; demais, a turma toda.
+          alunos_count: p.tipo_vinculo === 'recuperacao'
+            ? (p.alunos_selecionados?.length || 0)
+            : p.prova_origem_id
+              ? (faltaCounts[p.prova_origem_id] || 0)
+              : (p.turma_id ? (alunoCounts[p.turma_id] || 0) : 0),
         }))
         setRecentProvas(provasList)
       }
@@ -237,12 +243,37 @@ export default function DashboardPage() {
       // Build activity feed from activityMap + prova names
       const allProvas = (recentRes.data ?? []) as unknown as RecentProva[]
       const provaNames: Record<number, string> = {}
+      const excludedProvaIds = new Set<number>()
       for (const p of allProvas) {
         provaNames[p.id] = p.disciplina?.nome ?? `Prova #${p.id}`
       }
 
+      // Provas com atividade fora das 5 recentes: buscar nome e status para não
+      // exibir "Prova #id" genérico nem linkar para provas excluídas.
+      const missingIds = Object.keys(activityMap)
+        .map(Number)
+        .filter((id) => !(id in provaNames))
+      if (missingIds.length > 0) {
+        const { data: extraProvas } = await supabase
+          .from('provas')
+          .select('id, status, disciplina:disciplinas(nome)')
+          .in('id', missingIds)
+        for (const p of (extraProvas ?? []) as unknown as Array<{
+          id: number
+          status: string
+          disciplina: { nome: string } | null
+        }>) {
+          if (p.status === 'excluida') {
+            excludedProvaIds.add(p.id)
+          } else {
+            provaNames[p.id] = p.disciplina?.nome ?? `Prova #${p.id}`
+          }
+        }
+      }
+
       // Get activity for ALL provas (not just recent 5) — use resultados data
       const activityList: ActivityItem[] = Object.entries(activityMap)
+        .filter(([provaId]) => !excludedProvaIds.has(Number(provaId)))
         .map(([provaId, data]) => ({
           prova_id: Number(provaId),
           disciplina_nome: provaNames[Number(provaId)] || `Prova #${provaId}`,
@@ -335,7 +366,9 @@ export default function DashboardPage() {
         </div>
         <Button variant="outline" onClick={() => {
           localStorage.removeItem('provascan_tutorial_seen')
-          router.push('/ajuda')
+          // Navegação completa (não SPA): o TutorialModal do layout só lê o
+          // localStorage no mount, então precisa remontar para reabrir.
+          window.location.href = '/ajuda'
         }} className="gap-2">
           <BookOpen className="h-4 w-4" />
           Tutorial
@@ -454,7 +487,9 @@ export default function DashboardPage() {
                           {prova.disciplina?.nome ?? 'Prova'}
                         </p>
                         {prova.prova_origem_id && (
-                          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-[9px] px-1 py-0 shrink-0">2ª Ch.</Badge>
+                          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-[9px] px-1 py-0 shrink-0">
+                            {prova.tipo_vinculo === 'recuperacao' ? 'Rec.' : '2ª Ch.'}
+                          </Badge>
                         )}
                       </div>
                       <p className="text-xs text-gray-500 truncate">

@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ClipboardCheck, Download, FileText, Info, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Info, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -83,7 +83,7 @@ export default function CartoesPage() {
     }
 
     fetchData()
-  }, [provaId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [provaId, workspaceId, supabase])
 
   async function handleGenerar() {
     if (!prova) return

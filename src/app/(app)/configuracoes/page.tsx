@@ -28,7 +28,9 @@ export default function ConfiguracoesPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (role === 'corretor') {
+    // Só o dono pode editar o workspace (policy de update no RLS): coordenador
+    // "salvava", o RLS bloqueava em silêncio e o toast mentia sucesso.
+    if (role && role !== 'dono') {
       router.replace('/dashboard')
     }
   }, [role, router])
@@ -58,7 +60,7 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  if (role === 'corretor') return null
+  if (role !== 'dono') return null
 
   return (
     <div className="space-y-6">

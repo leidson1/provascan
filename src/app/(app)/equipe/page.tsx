@@ -62,7 +62,9 @@ export default function EquipePage() {
   const [removing, setRemoving] = useState(false)
 
   useEffect(() => {
-    if (role === 'corretor') router.replace('/dashboard')
+    // Gestão de equipe é exclusiva do dono (as APIs de convite exigem 'dono').
+    // Sem isto, coordenador ficava preso no skeleton: o fetch só roda para dono.
+    if (role && role !== 'dono') router.replace('/dashboard')
   }, [role, router])
 
   const fetchMembers = useCallback(async () => {
@@ -114,7 +116,7 @@ export default function EquipePage() {
 
       setConvites((data as Convite[]) || [])
     } catch {
-      // tabela pode nÃ£o existir ainda
+      // tabela pode não existir ainda
       setConvites([])
     }
   }, [supabase, workspaceId])
@@ -175,7 +177,7 @@ export default function EquipePage() {
       fetchMembers()
       fetchConvites()
     } catch {
-      toast.error('Erro de conexÃ£o')
+      toast.error('Erro de conexão')
     } finally {
       setInviting(false)
     }
@@ -218,7 +220,7 @@ export default function EquipePage() {
     fetchMembers()
   }
 
-  if (role === 'corretor') return null
+  if (role !== 'dono') return null
 
   return (
     <div className="space-y-6">
@@ -267,7 +269,7 @@ export default function EquipePage() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Papel</TableHead>
-                  <TableHead className="w-24">AÃ§Ãµes</TableHead>
+                  <TableHead className="w-24">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -286,7 +288,7 @@ export default function EquipePage() {
                     </TableCell>
                     <TableCell>
                       {m.role === 'dono' ? (
-                        <span className="text-xs text-gray-400">(VocÃª)</span>
+                        <span className="text-xs text-gray-400">(Você)</span>
                       ) : (
                         <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700"
                           onClick={() => { setRemovingMember(m); setRemoveOpen(true) }}>
@@ -345,7 +347,7 @@ export default function EquipePage() {
         </Card>
       )}
 
-      {/* â”€â”€ Invite Dialog â”€â”€ */}
+      {/* ── Invite Dialog ── */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -361,7 +363,7 @@ export default function EquipePage() {
 
           {inviteResult ? (
             inviteResult.tipo === 'adicionado' ? (
-              /* â”€â”€ Adicionado direto â”€â”€ */
+              /* ── Adicionado direto ── */
               <div className="space-y-4">
                 <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-center">
                   <p className="text-sm text-emerald-700">
@@ -374,7 +376,7 @@ export default function EquipePage() {
                 </DialogFooter>
               </div>
             ) : (
-              /* â”€â”€ Link de convite â”€â”€ */
+              /* ── Link de convite ── */
               <div className="space-y-4">
                 <div className="rounded-xl bg-indigo-50 border border-indigo-200 p-4 space-y-3">
                   <div>
@@ -401,7 +403,7 @@ export default function EquipePage() {
               </div>
             )
           ) : (
-            /* â”€â”€ FormulÃ¡rio â”€â”€ */
+            /* ── Formulário ── */
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Email do professor</Label>
@@ -420,8 +422,8 @@ export default function EquipePage() {
                   onChange={e => setFormRole(e.target.value as 'coordenador' | 'corretor')}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  <option value="corretor">Corretor â€” Corrige provas e vÃª estatÃ­sticas</option>
-                  <option value="coordenador">Coordenador â€” Cria e edita provas, turmas e disciplinas</option>
+                  <option value="corretor">Corretor — Corrige provas e vê estatísticas</option>
+                  <option value="coordenador">Coordenador — Cria e edita provas, turmas e disciplinas</option>
                 </select>
               </div>
               <div>
@@ -441,7 +443,7 @@ export default function EquipePage() {
         </DialogContent>
       </Dialog>
 
-      {/* â”€â”€ Remove Dialog â”€â”€ */}
+      {/* ── Remove Dialog ── */}
       <Dialog open={removeOpen} onOpenChange={setRemoveOpen}>
         <DialogContent>
           <DialogHeader>

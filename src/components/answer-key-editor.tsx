@@ -19,7 +19,6 @@ export function AnswerKeyEditor({
   value,
   onChange,
   tiposQuestoes,
-  criterioDiscursiva,
 }: AnswerKeyEditorProps) {
   const answers = value ? value.split(',') : Array(numQuestoes).fill('')
 

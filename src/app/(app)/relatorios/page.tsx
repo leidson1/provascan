@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   FileBarChart,
   FileSpreadsheet,
@@ -62,8 +63,15 @@ const REPORT_TYPES: { value: ReportType; label: string; desc: string; icon: type
 
 export default function RelatoriosPage() {
   const supabase = createClient()
+  const router = useRouter()
   const { workspaceId, workspace } = useWorkspace()
   const isGestor = useIsGestor()
+
+  // A sidebar esconde Relatórios de corretores, mas a rota continuava acessível
+  // por URL — relatórios do workspace inteiro são restritos a dono/coordenador.
+  useEffect(() => {
+    if (!isGestor) router.replace('/dashboard')
+  }, [isGestor, router])
 
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -167,6 +175,8 @@ export default function RelatoriosPage() {
       setGenerating(false)
     }
   }, [tipo, turmaId, disciplinaId, provaId, dataInicio, dataFim, provas, turmas, disciplinas, workspaceId, workspace]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!isGestor) return null
 
   if (loading) {
     return (

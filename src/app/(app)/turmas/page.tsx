@@ -57,7 +57,7 @@ const TURNOS = ['Manhã', 'Tarde', 'Integral', 'Noite'] as const
 
 export default function TurmasPage() {
   const supabase = createClient()
-  const { workspaceId, role } = useWorkspace()
+  const { workspaceId } = useWorkspace()
   const isGestor = useIsGestor()
   const isCorretor = !isGestor
   const [turmas, setTurmas] = useState<Turma[]>([])
@@ -94,6 +94,8 @@ export default function TurmasPage() {
         .select('*, alunos(count)')
         .eq('workspace_id', workspaceId)
         .eq('ativo', true)
+        // Filtro no embed: alunos excluídos (soft-delete) não entram na contagem
+        .eq('alunos.ativo', true)
         .order('serie')
         .order('turma')
 
@@ -104,7 +106,7 @@ export default function TurmasPage() {
     } finally {
       setLoading(false)
     }
-  }, [workspaceId])
+  }, [supabase, workspaceId])
 
   useEffect(() => {
     fetchTurmas()
