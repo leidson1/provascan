@@ -31,6 +31,9 @@ yarn-error.log*
 .pnpm-debug.log*
 output/
 
+# backups locais (contém dados de alunos — nunca versionar)
+.backups/
+
 # env files (can opt-in for committing if needed)
 .env*
 
