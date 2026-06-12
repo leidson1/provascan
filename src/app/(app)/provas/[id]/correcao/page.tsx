@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Save, BarChart3 } from 'lucide-react'
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { CorrectionGrid } from '@/components/correction-grid'
 import type { Prova, Aluno, Resultado } from '@/types/database'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
+import { calcularAcertos, calcularNota, calcularPercentual } from '@/lib/scoring'
 
 const LETRAS = ['A', 'B', 'C', 'D', 'E']
 
@@ -49,6 +50,7 @@ export default function CorrecaoPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [existingCount, setExistingCount] = useState(0)
+  const [existingAlunoIds, setExistingAlunoIds] = useState<Set<number>>(new Set())
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false)
 
   const gabarito = prova?.gabarito
@@ -58,110 +60,6 @@ export default function CorrecaoPage() {
   const tiposQuestoesArr = prova?.tipos_questoes
     ? prova.tipos_questoes.split(',')
     : []
-
-  // Resolve a question value to a score (0 or 1 for objective, 0-1 for discursive)
-  const resolveScore = useCallback(
-    (val: number | string | undefined, gabLetra: string, tipo: string): number => {
-      if (val === undefined) return 0
-      // Discursive: always a number (0, 0.5, 0.75, 1.0)
-      if (tipo === 'D' && typeof val === 'number') return val
-      // Objective: new format — answer letter as string
-      if (typeof val === 'string') return val === gabLetra ? 1 : 0
-      // Legacy format: 0/1
-      return val
-    },
-    []
-  )
-
-  // Calculate acertos for a student
-  const calcularAcertos = useCallback(
-    (questoes: Record<string, number | string>, gabaritoArr: string[], modoAnulacao?: string, tiposArr?: string[]) => {
-      let acertos = 0
-      const numAnuladas = gabaritoArr.filter(g => g === 'X').length
-      const numValidas = gabaritoArr.length - numAnuladas
-
-      if (modoAnulacao === 'redistribuir') {
-        for (let i = 0; i < gabaritoArr.length; i++) {
-          const key = `q${i + 1}`
-          if (gabaritoArr[i] === 'X') continue
-          const tipo = tiposArr?.[i] || 'O'
-          acertos += resolveScore(questoes[key], gabaritoArr[i], tipo)
-        }
-        if (numValidas > 0 && numValidas < gabaritoArr.length) {
-          acertos = (acertos / numValidas) * gabaritoArr.length
-        }
-      } else {
-        for (let i = 0; i < gabaritoArr.length; i++) {
-          const key = `q${i + 1}`
-          if (gabaritoArr[i] === 'X') {
-            acertos++
-          } else {
-            const tipo = tiposArr?.[i] || 'O'
-            acertos += resolveScore(questoes[key], gabaritoArr[i], tipo)
-          }
-        }
-      }
-      return Math.round(acertos * 100) / 100
-    },
-    [resolveScore]
-  )
-
-  const calcularNota = useCallback(
-    (
-      acertos: number,
-      numQuestoes: number,
-      prova: Prova,
-      questoes: Record<string, number | string>
-    ) => {
-      if (prova.modo_avaliacao !== 'nota' || !prova.nota_total) return null
-
-      const gabArr = prova.gabarito ? prova.gabarito.split(',') : []
-      const tiposArr = prova.tipos_questoes ? prova.tipos_questoes.split(',') : []
-      const modoAnulacao = prova.modo_anulacao || 'contar_certa'
-
-      if (prova.pesos_questoes) {
-        const pesosRaw = prova.pesos_questoes.split(',')
-        const pesos = Array.from({ length: numQuestoes }, (_, index) => {
-          const raw = pesosRaw[index]?.trim()
-          const parsed = Number(raw)
-          return raw !== undefined && raw !== '' && Number.isFinite(parsed) && parsed >= 0 ? parsed : 1
-        })
-        let nota = 0
-        const pesoTotal = pesos.reduce((s, p) => s + p, 0)
-        if (pesoTotal <= 0) return 0
-
-        if (modoAnulacao === 'redistribuir') {
-          let notaValidas = 0
-          let pesoValidas = 0
-          for (let i = 0; i < numQuestoes; i++) {
-            const key = `q${i + 1}`
-            const peso = pesos[i] ?? 1
-            if (gabArr[i] === 'X') continue
-            pesoValidas += peso
-            const tipo = tiposArr[i] || 'O'
-            notaValidas += resolveScore(questoes[key], gabArr[i], tipo) * peso
-          }
-          nota = pesoValidas > 0 ? (notaValidas / pesoValidas) * pesoTotal : 0
-        } else {
-          for (let i = 0; i < numQuestoes; i++) {
-            const key = `q${i + 1}`
-            const peso = pesos[i] ?? 1
-            if (gabArr[i] === 'X') {
-              nota += peso
-            } else {
-              const tipo = tiposArr[i] || 'O'
-              nota += resolveScore(questoes[key], gabArr[i], tipo) * peso
-            }
-          }
-        }
-        return Math.round((nota / pesoTotal) * prova.nota_total * 100) / 100
-      }
-
-      // Sem pesos: usa acertos (já escalado se redistribuir)
-      return Math.round((acertos / numQuestoes) * prova.nota_total * 100) / 100
-    },
-    [resolveScore]
-  )
 
   useEffect(() => {
     async function fetchData() {
@@ -227,6 +125,7 @@ export default function CorrecaoPage() {
 
       const resultadosList = (resultados ?? []) as Resultado[]
       setExistingCount(resultadosList.filter(r => r.presenca === 'P' || r.presenca === '*').length)
+      setExistingAlunoIds(new Set(resultadosList.map(r => r.aluno_id)))
       const gabArr = p.gabarito
         ? p.gabarito.split(',')
         : Array(p.num_questoes).fill('')
@@ -250,14 +149,13 @@ export default function CorrecaoPage() {
           const acertos = isPresente(presenca)
             ? calcularAcertos(questoes, gabArr, p.modo_anulacao, tiposArr)
             : 0
-          const percentual =
-            isPresente(presenca) && p.num_questoes > 0
-              ? Math.round((acertos / p.num_questoes) * 10000) / 100
-              : 0
+          const percentual = isPresente(presenca)
+            ? calcularPercentual(acertos, p.num_questoes)
+            : 0
           const nota = presenca === 'F'
             ? 0
             : isPresente(presenca)
-              ? calcularNota(acertos, p.num_questoes, p, questoes)
+              ? calcularNota(acertos, p, questoes)
               : null
           dadosInit[aluno.id] = {
             presenca,
@@ -281,7 +179,7 @@ export default function CorrecaoPage() {
     }
 
     fetchData()
-  }, [provaId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [provaId, workspaceId, supabase])
 
   function recalcularAluno(
     presenca: string,
@@ -302,11 +200,8 @@ export default function CorrecaoPage() {
     }
 
     const acertos = calcularAcertos(questoes, gabArr, prova.modo_anulacao, tiposQuestoesArr)
-    const percentual =
-      prova.num_questoes > 0
-        ? Math.round((acertos / prova.num_questoes) * 10000) / 100
-        : 0
-    const nota = calcularNota(acertos, prova.num_questoes, prova, questoes)
+    const percentual = calcularPercentual(acertos, prova.num_questoes)
+    const nota = calcularNota(acertos, prova, questoes)
 
     return { presenca, questoes, acertos, percentual, nota }
   }
@@ -422,22 +317,43 @@ export default function CorrecaoPage() {
         updated_at: new Date().toISOString(),
       }))
 
-    if (upserts.length === 0) {
+    // Alunos que tinham resultado salvo e tiveram a presença limpa: remover do banco
+    const idsToDelete = Object.entries(dados)
+      .filter(([alunoIdStr, d]) => d.presenca === '' && existingAlunoIds.has(Number(alunoIdStr)))
+      .map(([alunoIdStr]) => Number(alunoIdStr))
+
+    if (upserts.length === 0 && idsToDelete.length === 0) {
       toast.error('Nenhum aluno marcado com presença')
       setSaving(false)
       return
     }
 
-    const { error } = await supabase.from('resultados').upsert(upserts, {
-      onConflict: 'prova_id,aluno_id',
-    })
+    let error = null
+    if (upserts.length > 0) {
+      const res = await supabase.from('resultados').upsert(upserts, {
+        onConflict: 'prova_id,aluno_id',
+      })
+      error = res.error
+    }
+    if (!error && idsToDelete.length > 0) {
+      const res = await supabase
+        .from('resultados')
+        .delete()
+        .eq('prova_id', Number(provaId))
+        .in('aluno_id', idsToDelete)
+      error = res.error
+    }
 
     if (error) {
       toast.error('Erro ao salvar correção')
       console.error(error)
     } else {
-      toast.success(`Correção salva! ${upserts.length} aluno(s) registrados.`)
+      const partes = []
+      if (upserts.length > 0) partes.push(`${upserts.length} aluno(s) registrados`)
+      if (idsToDelete.length > 0) partes.push(`${idsToDelete.length} removido(s)`)
+      toast.success(`Correção salva! ${partes.join(', ')}.`)
       setExistingCount(upserts.length)
+      setExistingAlunoIds(new Set(upserts.map(u => u.aluno_id)))
     }
 
     setSaving(false)

@@ -348,7 +348,13 @@ function ProvasPage() {
 
     let error
     if (editingProva) {
-      const res = await supabase.from('provas').update(fullPayload).eq('id', editingProva.id)
+      // Na edição não sobrescrever campos imutáveis: criador, workspace e status
+      // (senão editar uma prova 'corrigida' a reabriria e trocaria o dono).
+      const updatePayload = { ...fullPayload }
+      delete updatePayload.user_id
+      delete updatePayload.workspace_id
+      delete updatePayload.status
+      const res = await supabase.from('provas').update(updatePayload).eq('id', editingProva.id)
       error = res.error
     } else if (formData.turmaIds && formData.turmaIds.length > 1 && !segundaChamadaOrigemId && !recuperacaoOrigemId) {
       // Múltiplas turmas — criar uma prova para cada

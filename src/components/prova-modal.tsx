@@ -78,10 +78,12 @@ function syncTiposQuestoes(
   return next
 }
 
+// Peso vazio, inválido ou não positivo vale 1: uma questão de peso 0 sumiria da
+// nota em silêncio (para anular uma questão existe o 'X' do gabarito).
 function normalizePesosQuestoes(numQuestoes: number, pesosQuestoes: number[]) {
   return Array.from({ length: numQuestoes }, (_, index) => {
     const peso = pesosQuestoes[index]
-    return Number.isFinite(peso) && peso >= 0 ? peso : 1
+    return Number.isFinite(peso) && peso > 0 ? peso : 1
   })
 }
 
@@ -242,7 +244,11 @@ function ProvaModalInner({
     for (let i = 0; i < numQuestoes; i++) {
       if (finalTipos[i] === 'D' && gabArr[i] !== 'D') gabArr[i] = 'D'
     }
-    const finalPesos = normalizePesosQuestoes(numQuestoes, pesosQuestoes)
+    // Só discursivas têm peso editável; objetivas valem sempre 1. Isso também
+    // descarta pesos órfãos de questões que deixaram de ser discursivas.
+    const finalPesos = normalizePesosQuestoes(numQuestoes, pesosQuestoes).map(
+      (peso, index) => (finalTipos[index] === 'D' ? peso : 1)
+    )
     const shouldPersistPesos =
       modoAvaliacao === 'nota' &&
       (tipoProva === 'discursiva' || finalPesos.some((peso) => peso !== 1))
@@ -311,9 +317,10 @@ function ProvaModalInner({
     setGabarito(next.join(','))
   }
 
-  function pesoChange(index: number, value: number) {
+  function pesoChange(index: number, rawValue: string) {
     const next = [...pesArr]
-    next[index] = value
+    // Campo vazio vira NaN (não 0): a normalização converte para 1 ao salvar.
+    next[index] = rawValue === '' ? NaN : Number(rawValue)
     setPesosQuestoes(next)
   }
 
@@ -659,10 +666,10 @@ function ProvaModalInner({
                     {isDiscursiva && (
                       <input
                         type="number"
-                        min={0}
+                        min={0.5}
                         step={0.5}
-                        value={pesArr[index] ?? ''}
-                        onChange={(event) => pesoChange(index, Number(event.target.value))}
+                        value={Number.isFinite(pesosQuestoes[index]) ? pesosQuestoes[index] : pesosQuestoes[index] === undefined ? pesArr[index] : ''}
+                        onChange={(event) => pesoChange(index, event.target.value)}
                         className="ml-2 h-7 w-16 rounded-md border border-gray-200 bg-white text-center text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200"
                         placeholder="peso"
                       />

@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { LiveScanner } from '@/components/camera/live-scanner'
 import type { Prova, Aluno, Resultado } from '@/types/database'
 import { CRITERIOS_DISCURSIVA } from '@/types/database'
+import { calcularAcertos, calcularNota, calcularPercentual, type Questoes } from '@/lib/scoring'
 import type { OMRResult as EngineOMRResult, OMREngine } from '@/lib/omr/engine'
 import {
   analyzeCaptureQuality,
@@ -31,7 +32,7 @@ type ProvaWithRelations = Prova & {
   disciplina?: { nome: string }
   turma?: { serie: string; turma: string }
 }
-type ExistingResultRef = { id: number }
+type ExistingResultRef = { id: number | null }
 type OMRStrategy = 'simple' | 'robust'
 type CaptureNoticeTone = 'info' | 'warning' | 'error'
 type CaptureNotice = {
@@ -46,8 +47,8 @@ const ALTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 // O scanner ao vivo continua pronto no projeto, mas fica desligado
 // até estabilizarmos completamente a captura por foto nativa.
 const ENABLE_LIVE_SCANNER = false
-// Diagnóstico e telemetria seguem disponíveis para desenvolvimento/admin,
-// mas ficam ocultos para os usuários até criarmos uma área própria de testes.
+// Com true, os painéis "Diagnóstico OMR" e "Telemetria OMR" aparecem nas telas
+// de captura/resultado para qualquer usuário.
 const ENABLE_OMR_DIAGNOSTICS = true
 const SHOW_CAMERA_MAINTENANCE_NOTICE = true
 
@@ -98,58 +99,56 @@ function parseGabarito(raw: string | null): string[] {
   return raw.split(',').map((s) => s.trim().toUpperCase())
 }
 
+// Converte o array de respostas da UI (letras nas objetivas, label do critério
+// nas discursivas) para o formato Record salvo no banco e usado pelo cálculo
+// compartilhado em @/lib/scoring (o mesmo da grade de correção).
+function montarQuestoes(
+  respostas: string[],
+  tiposQuestoes?: string | null,
+  criterioDiscursiva?: number
+): Questoes {
+  const tipos = tiposQuestoes ? tiposQuestoes.split(',') : []
+  const criterios =
+    CRITERIOS_DISCURSIVA[(criterioDiscursiva ?? 3) as 2 | 3 | 4] || CRITERIOS_DISCURSIVA[3]
+  const valorMap: Record<string, number> = {}
+  for (const criterio of criterios) valorMap[criterio.label] = criterio.valor
+
+  const questoes: Questoes = {}
+  respostas.forEach((resposta, i) => {
+    if (!resposta) return
+    const isDisc = tipos[i]?.trim() === 'D'
+    questoes[`q${i + 1}`] = isDisc
+      ? valorMap[resposta.toUpperCase()] ?? 0
+      : resposta.toUpperCase()
+  })
+  return questoes
+}
+
 function computeScore(
   respostas: string[],
   gabarito: string[],
   tiposQuestoes?: string | null,
-  criterioDiscursiva?: number
+  criterioDiscursiva?: number,
+  modoAnulacao?: string | null
 ): { acertos: number; percentual: number } {
-  const criterioMap: Record<number, Record<string, number>> = {
-    2: { C: 1, E: 0 },
-    3: { C: 1, P: 0.5, E: 0 },
-    4: { E: 1, B: 0.75, P: 0.5, I: 0 },
-  }
+  const questoes = montarQuestoes(respostas, tiposQuestoes, criterioDiscursiva)
   const tipos = tiposQuestoes ? tiposQuestoes.split(',') : []
-  const criterio = criterioDiscursiva || 3
-
-  let acertos = 0
-  let totalPossivel = 0
-  for (let i = 0; i < gabarito.length; i++) {
-    const gab = gabarito[i]
-    if (!gab || gab === 'X' || gab === '*') continue // anulada
-    totalPossivel++
-    const isDisc = tipos[i]?.trim() === 'D'
-    if (isDisc) {
-      // Discursiva: pontuar pelo critério marcado
-      const valorMap = criterioMap[criterio] || criterioMap[3]
-      const valor = valorMap[respostas[i]?.toUpperCase()] ?? 0
-      acertos += valor
-    } else {
-      // Objetiva: comparar com gabarito
-      if (respostas[i] && respostas[i].toUpperCase() === gab) acertos++
-    }
-  }
+  const acertos = calcularAcertos(questoes, gabarito, modoAnulacao, tipos)
   return {
     acertos,
-    percentual: totalPossivel > 0 ? Math.round((acertos / totalPossivel) * 100) : 0,
+    percentual: calcularPercentual(acertos, gabarito.length),
   }
 }
 
 async function resizeImage(file: File, options: ResizeOptions): Promise<HTMLCanvasElement> {
-  // Ler orientação EXIF manualmente para rotacionar se necessário
-  const orientation = await getExifOrientation(file)
-
+  // Os navegadores atuais já decodificam HTMLImageElement com a orientação EXIF
+  // aplicada (image-orientation: from-image é o padrão): width/height e drawImage
+  // chegam corretos. Rotacionar de novo aqui duplicaria a rotação.
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
-      const { width, height } = img
-
-      // Determinar se precisa trocar largura/altura (rotações 90°/270°)
-      const needsSwap = orientation >= 5 && orientation <= 8
-
-      // Redimensionar
-      const srcW = needsSwap ? height : width
-      const srcH = needsSwap ? width : height
+      const srcW = img.width
+      const srcH = img.height
       const longSide = Math.max(srcW, srcH)
       const shortSide = Math.min(srcW, srcH)
 
@@ -168,28 +167,7 @@ async function resizeImage(file: File, options: ResizeOptions): Promise<HTMLCanv
       canvas.width = dstW
       canvas.height = dstH
       const ctx = canvas.getContext('2d')!
-
-      // Aplicar transformação baseada na orientação EXIF
-      // 1=normal, 2=flip-h, 3=180°, 4=flip-v, 5=transpose, 6=90°CW, 7=transverse, 8=90°CCW
-      ctx.save()
-      switch (orientation) {
-        case 2: ctx.translate(dstW, 0); ctx.scale(-1, 1); break
-        case 3: ctx.translate(dstW, dstH); ctx.rotate(Math.PI); break
-        case 4: ctx.translate(0, dstH); ctx.scale(1, -1); break
-        case 5: ctx.translate(dstW, 0); ctx.scale(-1, 1); ctx.translate(dstW, 0); ctx.rotate(Math.PI / 2); break
-        case 6: ctx.translate(dstW, 0); ctx.rotate(Math.PI / 2); break
-        case 7: ctx.translate(0, dstH); ctx.scale(-1, 1); ctx.translate(0, -dstH); ctx.translate(dstH, 0); ctx.rotate(Math.PI / 2); break
-        case 8: ctx.translate(0, dstH); ctx.rotate(-Math.PI / 2); break
-        default: break // orientation 1 ou desconhecido = sem rotação
-      }
-
-      // Desenhar com dimensões da imagem original (a transformação cuida do resto)
-      if (needsSwap) {
-        ctx.drawImage(img, 0, 0, dstH, dstW)
-      } else {
-        ctx.drawImage(img, 0, 0, dstW, dstH)
-      }
-      ctx.restore()
+      ctx.drawImage(img, 0, 0, dstW, dstH)
 
       URL.revokeObjectURL(img.src)
       resolve(canvas)
@@ -197,59 +175,6 @@ async function resizeImage(file: File, options: ResizeOptions): Promise<HTMLCanv
     img.onerror = () => reject(new Error('Erro ao carregar imagem'))
     img.src = URL.createObjectURL(file)
   })
-}
-
-// Ler orientação EXIF de um arquivo JPEG (1-8, default 1)
-async function getExifOrientation(file: File): Promise<number> {
-  try {
-    const buffer = await file.slice(0, 65536).arrayBuffer()
-    const view = new DataView(buffer)
-
-    // Verificar se é JPEG (SOI marker)
-    if (view.getUint16(0) !== 0xFFD8) return 1
-
-    let offset = 2
-    while (offset < view.byteLength - 2) {
-      const marker = view.getUint16(offset)
-      offset += 2
-
-      if (marker === 0xFFE1) {
-        // APP1 (EXIF)
-        view.getUint16(offset)
-        offset += 2
-
-        // Verificar "Exif\0\0"
-        if (view.getUint32(offset) !== 0x45786966) return 1
-        offset += 6
-
-        const tiffStart = offset
-        const bigEndian = view.getUint16(tiffStart) === 0x4D4D
-
-        const ifdOffset = view.getUint32(tiffStart + 4, !bigEndian)
-        const numEntries = view.getUint16(tiffStart + ifdOffset, !bigEndian)
-
-        for (let i = 0; i < numEntries; i++) {
-          const entryOffset = tiffStart + ifdOffset + 2 + i * 12
-          if (entryOffset + 12 > view.byteLength) break
-          const tag = view.getUint16(entryOffset, !bigEndian)
-          if (tag === 0x0112) {
-            // Tag 0x0112 = Orientation
-            return view.getUint16(entryOffset + 8, !bigEndian)
-          }
-        }
-
-        return 1
-      } else if ((marker & 0xFF00) === 0xFF00) {
-        // Pular segmento
-        offset += view.getUint16(offset)
-      } else {
-        break
-      }
-    }
-  } catch {
-    // Falha ao ler EXIF, assumir orientação normal
-  }
-  return 1
 }
 
 function getOMRWarnings(respostas?: EngineOMRResult['respostas']): string[] {
@@ -432,10 +357,11 @@ function CameraPage() {
   // ── Load provas ──
   async function loadProvas() {
     setProvasLoading(true)
+    // Sem filtro por user_id: o RLS já limita aos workspaces do usuário, e um
+    // corretor precisa ver as provas criadas pelo dono do workspace.
     const { data, error } = await supabase
       .from('provas')
       .select('*, disciplina:disciplinas(*), turma:turmas(*)')
-      .eq('user_id', userId!)
       .not('gabarito', 'is', null)
       .in('status', ['aberta', 'corrigida'])
       .order('created_at', { ascending: false })
@@ -934,8 +860,8 @@ function CameraPage() {
 
   const currentAluno = currentAlunoId ? findAlunoById(currentAlunoId) : null
   const currentScore = useMemo(
-    () => computeScore(currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva),
-    [currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva]
+    () => computeScore(currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva, prova?.modo_anulacao),
+    [currentRespostas, gabarito, prova?.tipos_questoes, prova?.criterio_discursiva, prova?.modo_anulacao]
   )
   const correctedStudentsCount = useMemo(() => {
     if (alunos.length === 0) return existingResults.size
@@ -951,34 +877,10 @@ function CameraPage() {
     if (!prova || !userId) return
 
     const { acertos, percentual } = currentScore
-    const totalQuestoesValidas = gabarito.filter((item) => item && item !== 'X' && item !== '*').length
-    const respostasObj: Record<string, number | string> = {}
-    const tipos = prova.tipos_questoes ? prova.tipos_questoes.split(',') : []
-    const criterioMap: Record<number, Record<string, number>> = {
-      2: { C: 1, E: 0 },
-      3: { C: 1, P: 0.5, E: 0 },
-      4: { E: 1, B: 0.75, P: 0.5, I: 0 },
-    }
-    const criterio = prova.criterio_discursiva || 3
-    currentRespostas.forEach((r, i) => {
-      if (r) {
-        const isDisc = tipos[i]?.trim() === 'D'
-        if (isDisc) {
-          // Discursiva: store numeric score value
-          const valorMap = criterioMap[criterio] || criterioMap[3]
-          respostasObj[`q${i + 1}`] = valorMap[r.toUpperCase()] ?? 0
-        } else {
-          // Objetiva: store the answer letter
-          respostasObj[`q${i + 1}`] = r.toUpperCase()
-        }
-      }
-    })
-
-    // Calculate nota if modo_avaliacao === 'nota'
-    let nota: number | null = null
-    if (prova.modo_avaliacao === 'nota' && prova.nota_total && totalQuestoesValidas > 0) {
-      nota = Math.round((acertos / totalQuestoesValidas) * prova.nota_total * 100) / 100
-    }
+    // Mesmo formato e mesmo cálculo da grade de correção (@/lib/scoring):
+    // pesos por questão e modo de anulação são respeitados.
+    const respostasObj = montarQuestoes(currentRespostas, prova.tipos_questoes, prova.criterio_discursiva)
+    const nota = calcularNota(acertos, prova, respostasObj)
 
     const existing = existingResults.get(currentAlunoId)
     const payload = {
@@ -994,28 +896,19 @@ function CameraPage() {
       updated_at: new Date().toISOString(),
     }
 
-    let error
-    let savedResultId = existing?.id ?? null
-    if (existing) {
-      const res = await supabase
-        .from('resultados')
-        .update(payload)
-        .eq('id', existing.id)
-      error = res.error
-    } else {
-      const res = await supabase
-        .from('resultados')
-        .insert(payload)
-        .select('id')
-        .single()
-      error = res.error
-      savedResultId = res.data?.id ?? null
-    }
+    // Upsert pela chave (prova_id, aluno_id): não depende de conhecer o id do
+    // registro existente, então re-correções na mesma sessão nunca se perdem.
+    const res = await supabase
+      .from('resultados')
+      .upsert(payload, { onConflict: 'prova_id,aluno_id' })
+      .select('id')
+      .single()
 
-    if (error) {
-      toast.error('Erro ao salvar: ' + error.message)
+    if (res.error) {
+      toast.error('Erro ao salvar: ' + res.error.message)
       return
     }
+    const savedResultId = res.data?.id ?? existing?.id ?? null
 
     // Update session tracking
     setSessao((prev) => [
@@ -1024,12 +917,12 @@ function CameraPage() {
     ])
     setExistingResults((prev) => {
       const next = new Map(prev)
-      next.set(currentAlunoId, { id: savedResultId || existing?.id || 0 })
+      next.set(currentAlunoId, { id: savedResultId })
       return next
     })
 
     toast.success(
-      `${currentAluno?.nome || 'Aluno'}: ${acertos}/${totalQuestoesValidas || gabarito.length} (${percentual}%)`
+      `${currentAluno?.nome || 'Aluno'}: ${acertos}/${prova.num_questoes || gabarito.length} (${percentual}%)`
     )
 
     // Reset for next capture
